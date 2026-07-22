@@ -30,6 +30,9 @@ def clean_camera_name(exif):
     make = exif.get("Make", "")
     model = exif.get("Model", "Unknown Camera")
 
+    if isinstance(make, bytes): make = make.decode('utf-8', errors='ignore')
+    if isinstance(model, bytes): model = model.decode('utf-8', errors='ignore')
+
     if make:
         make_keyword = make.split()[0] if make.split() else make
         if make_keyword.upper() in BRANDS_SAFE_TO_STRIP:
@@ -40,26 +43,46 @@ def clean_camera_name(exif):
 
 
 def get_shutter(exif):
-    shutter = exif.get("ExposureTime", "?")
-    if shutter:
-        if isinstance(shutter, tuple):
-            shutter = shutter[0] / shutter[1]
-        if shutter < 1:
-            denom = round(1 / shutter)
-            shutter = f"1/{denom}"
+    shutter_raw = exif.get("ExposureTime", "?")
+    if not shutter_raw or shutter_raw == "?":
+        return "?"
+
+    val = None
+    if isinstance(shutter_raw, tuple) and len(shutter_raw) == 2:
+        val = shutter_raw[0] / shutter_raw[1] if shutter_raw[1] != 0 else None
+    elif isinstance(shutter_raw, (int, float)):
+        val = float(shutter_raw)
+    elif isinstance(shutter_raw, str):
+        if "/" in shutter_raw:
+            try:
+                n, d = shutter_raw.split("/")
+                val = float(n) / float(d) if float(d) != 0 else None
+            except:
+                val = None
         else:
-            shutter = f"{shutter}\""
+            try:
+                val = float(shutter_raw)
+            except:
+                val = None
+
+    if val is None or val == 0:
+        return str(shutter_raw)
+
+    if val < 1:
+        denom = round(1 / val)
+        return f"1/{denom}"
     else:
-        shutter = "?"
-    return shutter
+        return f"{round(val, 1)}\""
 
 
 def convert_to_degrees(value):
-    d = float(value[0])
-    m = float(value[1])
-    s = float(value[2])
-    return d + (m / 60.0) + (s / 3600.0)
-
+    try:
+        d = float(value[0][0] / value[0][1]) if isinstance(value[0], tuple) else float(value[0])
+        m = float(value[1][0] / value[1][1]) if isinstance(value[1], tuple) else float(value[1])
+        s = float(value[2][0] / value[2][1]) if isinstance(value[2], tuple) else float(value[2])
+        return d + (m / 60.0) + (s / 3600.0)
+    except:
+        return 0.0
 
 def get_gps(exif):
     gps_info = exif.get("GPSInfo", {})
@@ -67,13 +90,12 @@ def get_gps(exif):
         return None
     try:
         lat = convert_to_degrees(gps_info[2])
-        if gps_info[1] == 'S': lat = -lat
+        if gps_info.get(1) == 'S': lat = -lat
         lon = convert_to_degrees(gps_info[4])
-        if gps_info[3] == 'W': lon = -lon
+        if gps_info.get(3) == 'W': lon = -lon
         return lat, lon
     except:
         return None
-
 
 def get_datetime(exif):
     date_str = exif.get("DateTimeOriginal", "")
@@ -142,8 +164,11 @@ class ReturnPictureEXIF():
 
         f_val = self.exif.get("FNumber", "?")
         if isinstance(f_val, tuple) and len(f_val) == 2:
-            f_val = f_val[0] / f_val[1]
-        self.f_number = float(round(f_val, 1)) if isinstance(f_val, (int, float)) else f_val
+            f_val = f_val[0] / f_val[1] if f_val[1] != 0 else "?"
+        try:
+            self.f_number = float(round(float(f_val), 1))
+        except:
+            self.f_number = f_val
 
         self.shutter = get_shutter(self.exif)
         self.datetime = get_datetime(self.exif)
@@ -152,12 +177,12 @@ class ReturnPictureEXIF():
 
         eq_focal = self.exif.get("FocalLengthIn35mmFilm", "")
         if isinstance(eq_focal, tuple) and len(eq_focal) == 2:
-            eq_focal = eq_focal[0] / eq_focal[1]
+            eq_focal = eq_focal[0] / eq_focal[1] if eq_focal[1] != 0 else ""
 
         if not eq_focal or str(eq_focal) == "?":
             eq_focal = self.exif.get("FocalLength", "")
             if isinstance(eq_focal, tuple) and len(eq_focal) == 2:
-                eq_focal = eq_focal[0] / eq_focal[1]
+                eq_focal = eq_focal[0] / eq_focal[1] if eq_focal[1] != 0 else ""
 
         focal_str = f"@{int(float(eq_focal))}mm" if eq_focal and str(eq_focal) != "?" else ""
 
