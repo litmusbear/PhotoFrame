@@ -3,3 +3,4 @@ Pillow
 piexif
 pytz
 rawpy
+timezonefinder
