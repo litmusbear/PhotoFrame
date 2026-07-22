@@ -1,5 +1,6 @@
 import re
 from datetime import datetime
+import exifread
 from PIL import Image, ImageOps
 from PIL.ExifTags import TAGS
 import pytz
@@ -7,13 +8,31 @@ from timezonefinder import TimezoneFinder
 from lenses import KNOWN_COMPACT_LENSES
 
 def get_exif_data(image_path):
-    image = Image.open(image_path)
-    info = image._getexif()
     exif_dict = {}
-    if info:
-        for tag, value in info.items():
-            tag_name = TAGS.get(tag, tag)
-            exif_dict[tag_name] = value
+    try:
+        with open(image_path, 'rb') as f:
+            tags = exifread.process_file(f, details=False)
+            if tags:
+                # exifread 태그 이름을 PIL 태그 스타일로 매핑
+                for tag, val in tags.items():
+                    # EXIF Make, EXIF Model -> Make, Model 등으로 정리
+                    clean_tag = tag.split()[-1] if ' ' in tag else tag
+                    exif_dict[clean_tag] = str(val)
+                    exif_dict[tag] = str(val)
+    except Exception:
+        pass
+
+    try:
+        image = Image.open(image_path)
+        info = image._getexif()
+        if info:
+            for tag, value in info.items():
+                tag_name = TAGS.get(tag, tag)
+                if tag_name not in exif_dict:
+                    exif_dict[tag_name] = value
+    except Exception:
+        pass
+
     return exif_dict
 
 
