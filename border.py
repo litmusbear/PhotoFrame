@@ -26,6 +26,7 @@ def add_border(img, w, h, t, p):
     canvas.paste(img, (t, t))
     return canvas
 
+
 def save_uploaded_file_to_temp(uploaded_file, temp_path):
     file_bytes = uploaded_file.getbuffer()
     ext = os.path.splitext(uploaded_file.name)[1].lower()
