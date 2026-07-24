@@ -1,7 +1,7 @@
-PyExifTool
 streamlit
 Pillow
-exifread
-pytz
-timezonefinder
 piexif
+pytz
+rawpy
+timezonefinder
+exifread
