@@ -19,7 +19,7 @@ from border import *
 
 # lenses.py 연동
 try:
-    from lenses import OLD_LENSES_BY_BRAND, MANUAL_F_NUMBERS
+    from lenses import OLD_LENSES_BY_BRAND, MANUAL_F_NUMBERS, COMMON_EQUIV_FOCAL_LENGTHS
 except ImportError:
     OLD_LENSES_BY_BRAND = {
         "EXIF 기본값": ["EXIF 정보 사용"],
@@ -31,6 +31,7 @@ except ImportError:
         "Nikon F": ["Nikkor-S Auto 50mm f/1.4"]
     }
     MANUAL_F_NUMBERS = ["EXIF 유지", "f/1.2", "f/1.4", "f/1.8", "f/2.0", "f/2.8", "f/4.0", "f/5.6", "f/8.0"]
+    COMMON_EQUIV_FOCAL_LENGTHS = ["EXIF 유지", "24mm", "28mm", "35mm", "40mm", "50mm", "58mm", "85mm", "135mm", "직접 입력"]
 
 def extract_exif_bytes(source_path):
     if HAS_PIEXIF:
@@ -89,7 +90,7 @@ uploaded_files = st.file_uploader(
 if uploaded_files:
     temp_file_paths = []
 
-    # 세션 딕셔너리 초기화 (타임존 세션 저장 방식과 일치)
+    # 세션 딕셔너리 초기화
     if "tz_dict" not in st.session_state:
         st.session_state.tz_dict = {}
     if "brand_dict" not in st.session_state:
@@ -100,6 +101,10 @@ if uploaded_files:
         st.session_state.custom_lens_dict = {}
     if "f_dict" not in st.session_state:
         st.session_state.f_dict = {}
+    if "focal_dict" not in st.session_state:
+        st.session_state.focal_dict = {}
+    if "custom_focal_dict" not in st.session_state:
+        st.session_state.custom_focal_dict = {}
 
     brand_list = list(OLD_LENSES_BY_BRAND.keys())
 
@@ -117,6 +122,10 @@ if uploaded_files:
             st.session_state.custom_lens_dict[file_id] = ""
         if file_id not in st.session_state.f_dict:
             st.session_state.f_dict[file_id] = "EXIF 유지"
+        if file_id not in st.session_state.focal_dict:
+            st.session_state.focal_dict[file_id] = "EXIF 유지"
+        if file_id not in st.session_state.custom_focal_dict:
+            st.session_state.custom_focal_dict[file_id] = ""
 
         unique_id = f"{uuid.uuid4().hex[:6]}_{idx}"
         temp_path = f"temp_{unique_id}.jpg"
@@ -143,10 +152,10 @@ if uploaded_files:
             st.subheader(f"🖼️ 원본 파일: {uploaded_file.name}")
 
             # -------------------------------------------------------------
-            # [개선] 브랜드별 렌즈 선택 UI
+            # [개선] 브랜드별 렌즈 / 화각 / 조리개 수동 변경 UI
             # -------------------------------------------------------------
-            with st.expander("⚙️ 렌즈 / 조리개 수동 변경 (올드렌즈 설정)", expanded=True):
-                col_brand, col_lens, col_f = st.columns([1.2, 1.8, 1])
+            with st.expander("⚙️ 렌즈 / 화각 / 조리개 수동 변경 (올드렌즈 설정)", expanded=True):
+                col_brand, col_lens, col_focal, col_f = st.columns([1.1, 1.5, 1.1, 0.9])
 
                 # 1. 브랜드 선택
                 with col_brand:
@@ -194,7 +203,35 @@ if uploaded_files:
                             on_change=make_custom_lens_callback()
                         )
 
-                # 3. 조리개 선택
+                # 3. 화각(Focal Length) 선택
+                with col_focal:
+                    cur_focal = st.session_state.focal_dict[file_id]
+                    focal_idx = COMMON_EQUIV_FOCAL_LENGTHS.index(cur_focal) if cur_focal in COMMON_EQUIV_FOCAL_LENGTHS else 0
+
+                    def make_focal_callback(fid=file_id, uid=unique_id):
+                        return lambda: st.session_state.focal_dict.update({fid: st.session_state[f"focal_select_{uid}"]})
+
+                    selected_focal = st.selectbox(
+                        "📐 화각",
+                        COMMON_EQUIV_FOCAL_LENGTHS,
+                        index=focal_idx,
+                        key=f"focal_select_{unique_id}",
+                        on_change=make_focal_callback()
+                    )
+
+                    if selected_focal == "직접 입력":
+                        def make_custom_focal_callback(fid=file_id, uid=unique_id):
+                            return lambda: st.session_state.custom_focal_dict.update({fid: st.session_state[f"custom_focal_{uid}"]})
+
+                        st.text_input(
+                            "화각 직접 입력",
+                            value=st.session_state.custom_focal_dict[file_id],
+                            placeholder="예: 40mm",
+                            key=f"custom_focal_{unique_id}",
+                            on_change=make_custom_focal_callback()
+                        )
+
+                # 4. 조리개 선택
                 with col_f:
                     cur_f = st.session_state.f_dict[file_id]
                     f_idx = MANUAL_F_NUMBERS.index(cur_f) if cur_f in MANUAL_F_NUMBERS else 0
@@ -215,11 +252,17 @@ if uploaded_files:
             # -------------------------------------------------------------
             chosen_manual_lens = ""
             selected_lens_val = st.session_state.lens_dict[file_id]
-            
             if selected_lens_val == "사용자 지정 입력":
                 chosen_manual_lens = st.session_state.custom_lens_dict[file_id]
             elif selected_lens_val != "EXIF 정보 사용":
                 chosen_manual_lens = selected_lens_val
+
+            chosen_manual_focal = ""
+            selected_focal_val = st.session_state.focal_dict[file_id]
+            if selected_focal_val == "직접 입력":
+                chosen_manual_focal = st.session_state.custom_focal_dict[file_id]
+            elif selected_focal_val != "EXIF 유지":
+                chosen_manual_focal = selected_focal_val
 
             chosen_manual_f = ""
             selected_f_val = st.session_state.f_dict[file_id]
@@ -263,13 +306,14 @@ if uploaded_files:
 
             base_canvas = add_border(image, width, height, thickness, padding)
 
-            # place_model에 최종 덮어쓸 값 전달
+            # place_model에 최종 덮어쓸 값 전달 (override_focal 추가됨)
             final_canvas = place_model(
                 base_canvas, picture, width, height, thickness, padding, logo_file,
                 chosen_utc=single_chosen_utc, 
                 current_path=temp_path,
                 override_lens=chosen_manual_lens,
-                override_f=chosen_manual_f
+                override_f=chosen_manual_f,
+                override_focal=chosen_manual_focal
             )
 
             st.image(final_canvas, caption=f"결과물: {uploaded_file.name}", use_container_width=True)
