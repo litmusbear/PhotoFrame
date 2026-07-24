@@ -4,7 +4,12 @@ from datetime import datetime
 from font import *
 from PIL import Image, ImageDraw
 
-def place_model(canvas, pic, w, h, t, p, l_file, chosen_utc=None, current_path=None):
+def place_model(canvas, pic, w, h, t, p, l_file, chosen_utc=None, current_path=None, 
+                override_lens="", override_f=""):
+    """
+    override_lens: 사용자가 직접 입력/선택한 올드렌즈 이름
+    override_f: 사용자가 직접 선택한 조리개값 (예: '2.0', '1.4' 등)
+    """
     font_obj = set_font(p)
     font_reg = regular(p)
     font_dat = date_font(p)
@@ -17,10 +22,23 @@ def place_model(canvas, pic, w, h, t, p, l_file, chosen_utc=None, current_path=N
 
     draw = ImageDraw.Draw(canvas)
 
+    # 1. 카메라 이름
     text_camera = pic.get_camera()
-    text_info = f"f/{pic.get_f_number()}  {pic.get_shutter()}  ISO{pic.get_iso()}"
 
-    text_lens = pic.get_lens() if hasattr(pic, "get_lens") else ""
+    # 2. 조리개(f)값 처리 (수동 입력이 있으면 오버라이드, 없으면 EXIF 정보 사용)
+    if override_f:
+        f_val_str = f"f/{override_f}"
+    else:
+        f_val = pic.get_f_number()
+        f_val_str = f"f/{f_val}" if (f_val and f_val != "?") else "f/?"
+
+    text_info = f"{f_val_str}  {pic.get_shutter()}  ISO{pic.get_iso()}"
+
+    # 3. 렌즈 이름 처리 (수동 입력이 있으면 오버라이드, 없으면 EXIF 정보 사용)
+    if override_lens:
+        text_lens = override_lens
+    else:
+        text_lens = pic.get_lens() if hasattr(pic, "get_lens") else ""
 
     if text_lens:
         text_lens = text_lens.replace("\x00", "").strip()
@@ -147,6 +165,7 @@ def place_model(canvas, pic, w, h, t, p, l_file, chosen_utc=None, current_path=N
         font_reg = create_custom_font(int(size * 0.85), is_bold=False)
         font_dat = create_custom_font(int(size * 0.65), is_bold=False)
 
+    # 카메라 이름 그리기
     draw.text(
         (int(current_x), int(start_y)),
         text_camera,
@@ -157,6 +176,7 @@ def place_model(canvas, pic, w, h, t, p, l_file, chosen_utc=None, current_path=N
         stroke_fill=(0, 0, 0)
     )
 
+    # 렌즈 이름 그리기 (수동 선택 시 해당 이름으로 그려짐)
     if text_lens:
         lens_y = int(start_y + size + int(size * 0.15))
         draw.text(
@@ -167,8 +187,10 @@ def place_model(canvas, pic, w, h, t, p, l_file, chosen_utc=None, current_path=N
             anchor="la"
         )
 
+    # 조리개/셔터/ISO 정보 그리기 (수동 조리개 선택 시 해당 f값으로 그려짐)
     draw.text((int(info_x), int(start_y)), text_info, fill=(50, 50, 50), font=font_reg, anchor="ra")
 
+    # 촬영 날짜/시간 그리기
     if text_date:
         date_y = int(start_y + size + line_spacing)
         draw.text((int(info_x), date_y), text_date, fill=(140, 140, 140), font=font_dat, anchor="ra")
