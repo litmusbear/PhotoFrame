@@ -101,37 +101,95 @@ KNOWN_COMPACT_LENSES = {
 }
 
 OLD_LENSES_BY_BRAND = {
-    "EXIF 기본값": ["EXIF 정보 사용"],
-    "직접 입력": ["사용자 지정 입력"],
-    "Yashica / Contax": [
+    "기본 및 직접 입력": [
+        "EXIF 정보 사용",
+        "사용자 지정 입력"
+    ],
+    "M42 / 소비에트 (러시아)": [
+        "Helios 44-2 58mm f/2.0",
+        "Helios 44M-4 58mm f/2.0",
+        "Helios 40-2 85mm f/1.5",
+        "Jupiter-8 50mm f/2.0",
+        "Jupiter-9 85mm f/2.0",
+        "Industar-61 L/Z 50mm f/2.8",
+        "Industar-50-2 50mm f/3.5",
+        "Mir-1B 37mm f/2.8"
+    ],
+    "Pentax / Takumar (M42 & K)": [
+        "Asahi Pentax Super-Takumar 50mm f/1.4",
+        "Asahi Pentax Auto-Takumar 55mm f/1.8",
+        "SMC Takumar 50mm f/1.4",
+        "SMC Takumar 55mm f/1.8",
+        "SMC Takumar 28mm f/3.5",
+        "SMC Pentax-M 50mm f/1.4",
+        "SMC Pentax-M 50mm f/1.7",
+        "SMC Pentax-A 50mm f/1.4"
+    ],
+    "Yashica / Contax (C/Y)": [
         "Yashica ML 50mm f/1.4",
         "Yashica ML 50mm f/1.7",
         "Yashica ML 28mm f/2.8",
+        "Yashica DSB 50mm f/1.9",
         "Carl Zeiss Planar T* 50mm f/1.4 C/Y",
-        "Carl Zeiss Planar T* 50mm f/1.7 C/Y"
+        "Carl Zeiss Planar T* 50mm f/1.7 C/Y",
+        "Carl Zeiss Planar T* 85mm f/1.4 C/Y",
+        "Carl Zeiss Distagon T* 28mm f/2.8 C/Y",
+        "Carl Zeiss Tessar T* 45mm f/2.8 C/Y"
     ],
-    "Pentax / M42": [
-        "Helios 44-2 58mm f/2.0",
-        "Asahi Pentax Super-Takumar 50mm f/1.4",
-        "Asahi Pentax Super-Takumar 55mm f/1.8",
-        "Industar-61 L/Z 50mm f/2.8"
+    "Minolta / Sony (SR / MD / A)": [
+        "Minolta MC Rokkor-PG 50mm f/1.4",
+        "Minolta MD Rokkor 50mm f/1.4",
+        "Minolta MD 50mm f/1.7",
+        "Minolta MD W.Rokkor 28mm f/2.8",
+        "Minolta MC Tele Rokkor 135mm f/2.8",
+        "Minolta AF 50mm f/1.4"
     ],
-    "Leica / L39": [
+    "Canon (FD / FL / L39)": [
+        "Canon FD 50mm f/1.4 SSC",
+        "Canon FD 50mm f/1.4 nFD",
+        "Canon FD 50mm f/1.8 SC",
+        "Canon FD 55mm f/1.2 SSC",
+        "Canon FD 28mm f/2.8",
+        "Canon FD 35mm f/2.0",
+        "Canon FL 50mm f/1.4",
+        "Canon 50mm f/1.8 (L39)"
+    ],
+    "Nikon (F 마운트 AI / AI-S)": [
+        "Nikkor-S Auto 50mm f/1.4",
+        "Nikkor AI 50mm f/1.4",
+        "Nikkor AI 50mm f/1.8",
+        "Nikkor AI-S 50mm f/1.2",
+        "Nikkor AI-S 50mm f/1.4",
+        "Nikkor AI 35mm f/2.0",
+        "Nikkor AI 105mm f/2.5"
+    ],
+    "Leica / Voigtländer (M / L39)": [
         "Leica Summicron-M 50mm f/2.0",
         "Leica Summilux-M 50mm f/1.4",
-        "Voigtlander Nokton 50mm f/1.2"
+        "Leica Elmar 50mm f/2.8 (L39)",
+        "Voigtländer Nokton 50mm f/1.2 ASPH",
+        "Voigtländer Color-Skopar 35mm f/2.5",
+        "Voigtländer Nokton Classic 35mm f/1.4"
     ],
-    "Canon FD": [
-        "Canon FD 50mm f/1.4 SSC",
-        "Canon FD 50mm f/1.8 SC"
-    ],
-    "Nikon F": [
-        "Nikkor-S Auto 50mm f/1.4",
-        "Nikkor AI 50mm f/1.8"
+    "Olympus (OM 마운트)": [
+        "Olympus OM-System Zuiko Auto-S 50mm f/1.4",
+        "Olympus OM-System Zuiko Auto-S 50mm f/1.8",
+        "Olympus OM-System Zuiko Auto-W 28mm f/2.8",
+        "Olympus OM-System Zuiko Auto-T 135mm f/2.8"
     ]
 }
 
+# 3. 모든 렌즈 단일 리스트 (통합 검색용)
+ALL_OLD_LENSES = []
+for brand, lenses in OLD_LENSES_BY_BRAND.items():
+    for l in lenses:
+        if l not in ALL_OLD_LENSES:
+            ALL_OLD_LENSES.append(l)
+
+# 4. 수동 조리개 수치 목록
 MANUAL_F_NUMBERS = [
-    "EXIF 유지", "f/1.2", "f/1.4", "f/1.8", "f/2.0", "f/2.8", 
-    "f/3.5", "f/4.0", "f/5.6", "f/8.0", "f/11", "f/16"
+    "EXIF 유지", 
+    "f/0.95", "f/1.2", "f/1.4", "f/1.8", "f/2.0", 
+    "f/2.5", "f/2.8", "f/3.5", "f/4.0", "f/5.6", 
+    "f/8.0", "f/11", "f/16", "f/22"
 ]
