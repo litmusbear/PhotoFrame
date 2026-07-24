@@ -13,9 +13,7 @@ def get_exif_data(image_path):
         with open(image_path, 'rb') as f:
             tags = exifread.process_file(f, details=False)
             if tags:
-                # exifread 태그 이름을 PIL 태그 스타일로 매핑
                 for tag, val in tags.items():
-                    # EXIF Make, EXIF Model -> Make, Model 등으로 정리
                     clean_tag = tag.split()[-1] if ' ' in tag else tag
                     exif_dict[clean_tag] = str(val)
                     exif_dict[tag] = str(val)
@@ -103,6 +101,7 @@ def convert_to_degrees(value):
     except:
         return 0.0
 
+
 def get_gps(exif):
     gps_info = exif.get("GPSInfo", {})
     if not gps_info:
@@ -116,24 +115,32 @@ def get_gps(exif):
     except:
         return None
 
+
 def get_datetime(exif):
     date_str = exif.get("DateTimeOriginal", "")
     if not date_str: return ""
 
-    dt = datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
+    try:
+        dt = datetime.strptime(str(date_str), "%Y:%m:%d %H:%M:%S")
+    except:
+        return str(date_str)
+
     coords = get_gps(exif)
     utc_offset_str = "UTC+00:00"
 
     if coords:
-        tf = TimezoneFinder()
-        tz_name = tf.timezone_at(lat=coords[0], lng=coords[1])
-        if tz_name:
-            timezone = pytz.timezone(tz_name)
-            aware_dt = timezone.localize(dt)
-            utc_offset = aware_dt.utcoffset()
-            hours = int(utc_offset.total_seconds() / 3600)
-            minutes = int((utc_offset.total_seconds() % 3600) / 60)
-            utc_offset_str = f"UTC{'+' if hours >= 0 else ''}{hours:02d}:{abs(minutes):02d}"
+        try:
+            tf = TimezoneFinder()
+            tz_name = tf.timezone_at(lat=coords[0], lng=coords[1])
+            if tz_name:
+                timezone = pytz.timezone(tz_name)
+                aware_dt = timezone.localize(dt)
+                utc_offset = aware_dt.utcoffset()
+                hours = int(utc_offset.total_seconds() / 3600)
+                minutes = int((utc_offset.total_seconds() % 3600) / 60)
+                utc_offset_str = f"UTC{'+' if hours >= 0 else ''}{hours:02d}:{abs(minutes):02d}"
+        except:
+            pass
 
     return dt.strftime(f"%Y-%b-%d %H:%M {utc_offset_str}")
 
@@ -179,9 +186,12 @@ class ReturnPictureEXIF():
         self.exif = get_exif_data(image_path)
         self.image = ImageOps.exif_transpose(img)
         self.camera = clean_camera_name(self.exif)
-        self.iso = self.exif.get("# F-Number 처리 (분수 형태 문자열, 튜플, float 모두 대응)
-        f_val = self.exif.get("FNumber", "?")
+        
+        # ISO 추출 (ISOSpeedRatings 또는 PhotographicSensitivity 대응)
+        self.iso = self.exif.get("ISOSpeedRatings", self.exif.get("PhotographicSensitivity", "?"))
 
+        # F-Number 처리 (분수 형태 문자열, 튜플, float 모두 대응)
+        f_val = self.exif.get("FNumber", "?")
 
         if isinstance(f_val, str) and "/" in f_val:
             try:
@@ -189,8 +199,6 @@ class ReturnPictureEXIF():
                 f_val = float(num) / float(den) if float(den) != 0 else "?"
             except:
                 pass
-
-
         elif isinstance(f_val, tuple) and len(f_val) == 2:
             try:
                 f_val = f_val[0] / f_val[1] if f_val[1] != 0 else "?"
@@ -207,7 +215,6 @@ class ReturnPictureEXIF():
         except:
             self.f_number = f_val
 
-
         self.shutter = get_shutter(self.exif)
         self.datetime = get_datetime(self.exif)
 
@@ -222,7 +229,10 @@ class ReturnPictureEXIF():
             if isinstance(eq_focal, tuple) and len(eq_focal) == 2:
                 eq_focal = eq_focal[0] / eq_focal[1] if eq_focal[1] != 0 else ""
 
-        focal_str = f"@{int(float(eq_focal))}mm" if eq_focal and str(eq_focal) != "?" else ""
+        try:
+            focal_str = f"@{int(float(eq_focal))}mm" if eq_focal and str(eq_focal) != "?" else ""
+        except:
+            focal_str = ""
 
         if base_lens:
             self.lens = f"{base_lens} {focal_str}".strip()
