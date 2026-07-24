@@ -74,12 +74,12 @@ def get_shutter(exif):
             try:
                 n, d = shutter_raw.split("/")
                 val = float(n) / float(d) if float(d) != 0 else None
-            except:
+            except Exception:
                 val = None
         else:
             try:
                 val = float(shutter_raw)
-            except:
+            except Exception:
                 val = None
 
     if val is None or val == 0:
@@ -98,7 +98,7 @@ def convert_to_degrees(value):
         m = float(value[1][0] / value[1][1]) if isinstance(value[1], tuple) else float(value[1])
         s = float(value[2][0] / value[2][1]) if isinstance(value[2], tuple) else float(value[2])
         return d + (m / 60.0) + (s / 3600.0)
-    except:
+    except Exception:
         return 0.0
 
 
@@ -112,7 +112,7 @@ def get_gps(exif):
         lon = convert_to_degrees(gps_info[4])
         if gps_info.get(3) == 'W': lon = -lon
         return lat, lon
-    except:
+    except Exception:
         return None
 
 
@@ -122,7 +122,7 @@ def get_datetime(exif):
 
     try:
         dt = datetime.strptime(str(date_str), "%Y:%m:%d %H:%M:%S")
-    except:
+    except Exception:
         return str(date_str)
 
     coords = get_gps(exif)
@@ -139,7 +139,7 @@ def get_datetime(exif):
                 hours = int(utc_offset.total_seconds() / 3600)
                 minutes = int((utc_offset.total_seconds() % 3600) / 60)
                 utc_offset_str = f"UTC{'+' if hours >= 0 else ''}{hours:02d}:{abs(minutes):02d}"
-        except:
+        except Exception:
             pass
 
     return dt.strftime(f"%Y-%b-%d %H:%M {utc_offset_str}")
@@ -188,23 +188,28 @@ class ReturnPictureEXIF():
         self.camera = clean_camera_name(self.exif)
         self.iso = self.exif.get("ISOSpeedRatings", "?")
 
-        # F-Number 처리 (주석이나 따옴표가 잘리지 않도록 확인)
+        # F-Number 처리
         f_val = self.exif.get("FNumber", "?")
 
         if isinstance(f_val, str) and "/" in f_val:
             try:
                 num, den = f_val.split("/")
                 f_val = float(num) / float(den) if float(den) != 0 else "?"
-            except:
+            except Exception:
                 pass
-
-
         elif isinstance(f_val, tuple) and len(f_val) == 2:
             try:
                 f_val = f_val[0] / f_val[1] if f_val[1] != 0 else "?"
-@@ -207,7 +215,6 @@ def __init__(self, image_path):
-        except:
-            self.f_number = f_val
+            except Exception:
+                pass
+
+        try:
+            if f_val != "?" and f_val is not None:
+                self.f_number = f"{float(f_val):.1f}"
+            else:
+                self.f_number = "?"
+        except Exception:
+            self.f_number = str(f_val)
 
         self.shutter = get_shutter(self.exif)
         self.datetime = get_datetime(self.exif)
@@ -222,7 +227,7 @@ class ReturnPictureEXIF():
 
         try:
             focal_str = f"@{int(float(eq_focal))}mm" if eq_focal and str(eq_focal) != "?" else ""
-        except:
+        except Exception:
             focal_str = ""
 
         if base_lens:
