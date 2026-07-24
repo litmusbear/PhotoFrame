@@ -152,18 +152,25 @@ if uploaded_files:
             st.subheader(f"🖼️ 원본 파일: {uploaded_file.name}")
 
             # -------------------------------------------------------------
-            # [GPS 방식 적용] EXIF 메타데이터 존재 여부 확인 및 UI 동적 노출
+            # [수정] EXIF 데이터 존재 여부 정밀 판별 (Lens Unspecified, f/0.0, 0mm 등 무효값 필터링)
             # -------------------------------------------------------------
-            exif_lens = picture.get_lens() if hasattr(picture, "get_lens") else None
-            exif_focal = picture.get_focal_length() if hasattr(picture, "get_focal_length") else None
-            exif_f_num = picture.get_f_number() if hasattr(picture, "get_f_number") else None
+            raw_lens = str(picture.get_lens() if hasattr(picture, "get_lens") else "").strip()
+            raw_focal = str(picture.get_focal_length() if hasattr(picture, "get_focal_length") else "").strip()
+            raw_f_num = str(picture.get_f_number() if hasattr(picture, "get_f_number") else "").strip()
 
-            # 값이 없거나 무효한 값('?', 'None' 등)인 경우 False로 처리
-            has_lens = bool(exif_lens and str(exif_lens).strip() not in ["", "?", "None", "Unknown"])
-            has_focal = bool(exif_focal and str(exif_focal).strip() not in ["", "?", "None"])
-            has_f_num = bool(exif_f_num and str(exif_f_num).strip() not in ["", "?", "None"])
+            # 1) 렌즈 판별 (Lens Unspecified, Unspecified, ?, None 등 제외)
+            invalid_lenses = ["", "?", "none", "unknown", "unspecified", "lens unspecified"]
+            has_lens = bool(raw_lens) and (raw_lens.lower() not in invalid_lenses)
 
-            # 없는 메타데이터가 하나라도 있을 때만 수동 입력 패널 노출
+            # 2) 화각 판별 (0, 0mm, 0.0mm, ?, None 등 제외)
+            invalid_focals = ["", "?", "none", "0", "0mm", "0.0mm", "0.0"]
+            has_focal = bool(raw_focal) and (raw_focal.lower() not in invalid_focals)
+
+            # 3) 조리개 판별 (0, 0.0, f/0.0, ?, None 등 제외)
+            invalid_f_nums = ["", "?", "none", "0", "0.0", "f/0.0", "f/0"]
+            has_f_num = bool(raw_f_num) and (raw_f_num.lower() not in invalid_f_nums)
+
+            # 세 항목 중 하나라도 없거나 무효하면 수동 입력 패널 생성
             if not (has_lens and has_focal and has_f_num):
                 with st.expander("⚙️ 누락된 EXIF 정보 수동 입력", expanded=True):
                     
@@ -179,7 +186,7 @@ if uploaded_files:
                     cols = st.columns(len(active_cols))
                     col_idx = 0
 
-                    # 1) 렌즈 메타데이터가 없을 때만
+                    # 1. 렌즈 선택 UI (렌즈 정보가 없을 때만)
                     if not has_lens:
                         with cols[col_idx]:
                             cur_brand = st.session_state.brand_dict[file_id]
@@ -226,7 +233,7 @@ if uploaded_files:
                                 )
                         col_idx += 1
 
-                    # 2) 화각 메타데이터가 없을 때만
+                    # 2. 화각 선택 UI (화각 정보가 없을 때만)
                     if not has_focal:
                         with cols[col_idx]:
                             cur_focal = st.session_state.focal_dict[file_id]
@@ -256,7 +263,7 @@ if uploaded_files:
                                 )
                         col_idx += 1
 
-                    # 3) 조리개 메타데이터가 없을 때만
+                    # 3. 조리개 선택 UI (조리개 정보가 없을 때만)
                     if not has_f_num:
                         with cols[col_idx]:
                             cur_f = st.session_state.f_dict[file_id]
