@@ -6,6 +6,7 @@ from PIL.ExifTags import TAGS
 import pytz
 from timezonefinder import TimezoneFinder
 
+# lenses.py 불러오기 예외 처리
 try:
     from lenses import KNOWN_COMPACT_LENSES
 except ImportError:
@@ -38,7 +39,14 @@ def get_exif_data(image_path):
     return exif_dict
 
 
-BRANDS_SAFE_TO_STRIP = {"CANON", "PANASONIC", "SONY", "OLYMPUS", "RICOH"}
+BRANDS_SAFE_TO_STRIP = {
+    "CANON",
+    "PANASONIC",
+    "SONY",
+    "OLYMPUS",
+    "RICOH",
+}
+
 
 def clean_camera_name(exif):
     make = exif.get("Make", "")
@@ -57,9 +65,9 @@ def clean_camera_name(exif):
 
 
 def get_shutter(exif):
-    shutter_raw = exif.get("ExposureTime", "")
+    shutter_raw = exif.get("ExposureTime", "?")
     if not shutter_raw or shutter_raw == "?":
-        return None
+        return "?"
 
     val = None
     if isinstance(shutter_raw, tuple) and len(shutter_raw) == 2:
@@ -80,7 +88,7 @@ def get_shutter(exif):
                 val = None
 
     if val is None or val == 0:
-        return None
+        return str(shutter_raw)
 
     if val < 1:
         denom = round(1 / val)
@@ -142,31 +150,14 @@ def get_datetime(exif):
     return dt.strftime(f"%Y-%b-%d %H:%M {utc_offset_str}")
 
 
-def get_focal_length(exif):
-    eq_focal = exif.get("FocalLengthIn35mmFilm", "")
-    if isinstance(eq_focal, tuple) and len(eq_focal) == 2:
-        eq_focal = eq_focal[0] / eq_focal[1] if eq_focal[1] != 0 else ""
-
-    if not eq_focal or str(eq_focal) == "?":
-        eq_focal = exif.get("FocalLength", "")
-        if isinstance(eq_focal, tuple) and len(eq_focal) == 2:
-            eq_focal = eq_focal[0] / eq_focal[1] if eq_focal[1] != 0 else ""
-
-    try:
-        val = int(float(eq_focal))
-        return f"{val}mm" if val > 0 else None
-    except Exception:
-        return None
-
-
 def lookup_known_lens(camera_model):
     if not camera_model:
-        return None
+        return ""
     model_upper = camera_model.upper()
     for keyword, lens_spec in KNOWN_COMPACT_LENSES.items():
         if keyword.upper() in model_upper:
             return lens_spec
-    return None
+    return ""
 
 
 def get_lens(exif, camera_model=""):
@@ -178,7 +169,7 @@ def get_lens(exif, camera_model=""):
     lens_str = str(lens).strip() if lens else ""
 
     if not lens_str or lens_str.lower() in ["none", "unknown", "?", "built-in"]:
-        return None
+        return ""
 
     if camera_model:
         pattern = re.compile(re.escape(camera_model), re.IGNORECASE)
@@ -189,35 +180,8 @@ def get_lens(exif, camera_model=""):
         if specs:
             lens_str = " ".join(specs).strip()
         else:
-            return None
-            
-    cleaned = lens_str.strip(" ,-_")
-    return cleaned if cleaned else None
-
-
-def get_f_number(exif):
-    f_val = exif.get("FNumber", None)
-    if not f_val or f_val == "?":
-        return None
-
-    if isinstance(f_val, str) and "/" in f_val:
-        try:
-            num, den = f_val.split("/")
-            f_val = float(num) / float(den) if float(den) != 0 else None
-        except Exception:
-            f_val = None
-    elif isinstance(f_val, tuple) and len(f_val) == 2:
-        try:
-            f_val = f_val[0] / f_val[1] if f_val[1] != 0 else None
-        except Exception:
-            f_val = None
-
-    try:
-        if f_val is not None:
-            return f"f/{float(f_val):.1f}"
-    except Exception:
-        pass
-    return None
+            lens_str = ""
+    return lens_str.strip(" ,-_")
 
 
 class ReturnPictureEXIF():
@@ -227,18 +191,72 @@ class ReturnPictureEXIF():
         self.exif = get_exif_data(image_path)
         self.image = ImageOps.exif_transpose(img)
         self.camera = clean_camera_name(self.exif)
-        self.iso = self.exif.get("ISOSpeedRatings", None)
-        self.f_number = get_f_number(self.exif)
-        self.shutter = get_shutter(self.exif)
-        self.datetime = get_datetime(self.exif)  # 복구된 get_datetime
-        self.lens = get_lens(self.exif, self.camera)
-        self.focal_length = get_focal_length(self.exif)
+        self.iso = self.exif.get("ISOSpeedRatings", "?")
 
-    def get_image(self): return self.image
-    def get_camera(self): return self.camera
-    def get_iso(self): return self.iso
-    def get_f_number(self): return self.f_number
-    def get_shutter(self): return self.shutter
-    def get_datetime(self): return self.datetime
-    def get_lens(self): return self.lens
-    def get_focal_length(self): return self.focal_length
+        # F-Number 처리
+        f_val = self.exif.get("FNumber", "?")
+
+        if isinstance(f_val, str) and "/" in f_val:
+            try:
+                num, den = f_val.split("/")
+                f_val = float(num) / float(den) if float(den) != 0 else "?"
+            except Exception:
+                pass
+        elif isinstance(f_val, tuple) and len(f_val) == 2:
+            try:
+                f_val = f_val[0] / f_val[1] if f_val[1] != 0 else "?"
+            except Exception:
+                pass
+
+        try:
+            if f_val != "?" and f_val is not None:
+                self.f_number = f"{float(f_val):.1f}"
+            else:
+                self.f_number = "?"
+        except Exception:
+            self.f_number = str(f_val)
+
+        self.shutter = get_shutter(self.exif)
+        self.datetime = get_datetime(self.exif)
+
+        base_lens = get_lens(self.exif, self.camera)
+
+        eq_focal = self.exif.get("FocalLengthIn35mmFilm", "")
+        if isinstance(eq_focal, tuple) and len(eq_focal) == 2:
+            eq_focal = eq_focal[0] / eq_focal[1] if eq_focal[1] != 0 else ""
+
+        if not eq_focal or str(eq_focal) == "?":
+            eq_focal = self.exif.get("FocalLength", "")
+            if isinstance(eq_focal, tuple) and len(eq_focal) == 2:
+                eq_focal = eq_focal[0] / eq_focal[1] if eq_focal[1] != 0 else ""
+
+        try:
+            focal_str = f"@{int(float(eq_focal))}mm" if eq_focal and str(eq_focal) != "?" else ""
+        except Exception:
+            focal_str = ""
+
+        if base_lens:
+            self.lens = f"{base_lens} {focal_str}".strip()
+        else:
+            self.lens = f"Lens Unspecified {focal_str}".strip()
+
+    def get_image(self):
+        return self.image
+
+    def get_camera(self):
+        return self.camera
+
+    def get_iso(self):
+        return self.iso
+
+    def get_f_number(self):
+        return self.f_number
+
+    def get_shutter(self):
+        return self.shutter
+
+    def get_datetime(self):
+        return self.datetime
+
+    def get_lens(self):
+        return self.lens
