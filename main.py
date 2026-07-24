@@ -19,10 +19,17 @@ from border import *
 
 # lenses.py 연동
 try:
-    from lenses import OLD_LENSES_BY_BRAND, ALL_OLD_LENSES, MANUAL_F_NUMBERS
+    from lenses import OLD_LENSES_BY_BRAND, MANUAL_F_NUMBERS
 except ImportError:
-    ALL_OLD_LENSES = ["EXIF 정보 사용", "사용자 지정 입력", "Helios 44-2 58mm f/2.0", "Yashica ML 50mm f/1.4"]
-    OLD_LENSES_BY_BRAND = {"전체": ALL_OLD_LENSES}
+    OLD_LENSES_BY_BRAND = {
+        "EXIF 기본값": ["EXIF 정보 사용"],
+        "직접 입력": ["사용자 지정 입력"],
+        "Yashica / Contax": ["Yashica ML 50mm f/1.4", "Carl Zeiss Planar T* 50mm f/1.4 C/Y"],
+        "Pentax / M42": ["Helios 44-2 58mm f/2.0", "Asahi Pentax Super-Takumar 50mm f/1.4"],
+        "Leica / L39": ["Leica Summicron-M 50mm f/2.0"],
+        "Canon FD": ["Canon FD 50mm f/1.4 SSC"],
+        "Nikon F": ["Nikkor-S Auto 50mm f/1.4"]
+    }
     MANUAL_F_NUMBERS = ["EXIF 유지", "f/1.2", "f/1.4", "f/1.8", "f/2.0", "f/2.8", "f/4.0", "f/5.6", "f/8.0"]
 
 def extract_exif_bytes(source_path):
@@ -82,9 +89,11 @@ uploaded_files = st.file_uploader(
 if uploaded_files:
     temp_file_paths = []
 
-    # 1. 타임존, 렌즈, 조리개 세션 딕셔너리 초기화 (타임존 방식과 동일)
+    # 세션 딕셔너리 초기화 (타임존 세션 저장 방식과 일치)
     if "tz_dict" not in st.session_state:
         st.session_state.tz_dict = {}
+    if "brand_dict" not in st.session_state:
+        st.session_state.brand_dict = {}
     if "lens_dict" not in st.session_state:
         st.session_state.lens_dict = {}
     if "custom_lens_dict" not in st.session_state:
@@ -92,12 +101,16 @@ if uploaded_files:
     if "f_dict" not in st.session_state:
         st.session_state.f_dict = {}
 
+    brand_list = list(OLD_LENSES_BY_BRAND.keys())
+
     for idx, uploaded_file in enumerate(uploaded_files):
         file_id = uploaded_file.name
         
-        # 기본값 세팅
+        # 파일별 기본 세션 값 세팅
         if file_id not in st.session_state.tz_dict:
             st.session_state.tz_dict[file_id] = "UTC+09:00 (한국/일본/인도네시아 동부)"
+        if file_id not in st.session_state.brand_dict:
+            st.session_state.brand_dict[file_id] = brand_list[0] if brand_list else ""
         if file_id not in st.session_state.lens_dict:
             st.session_state.lens_dict[file_id] = "EXIF 정보 사용"
         if file_id not in st.session_state.custom_lens_dict:
@@ -130,42 +143,45 @@ if uploaded_files:
             st.subheader(f"🖼️ 원본 파일: {uploaded_file.name}")
 
             # -------------------------------------------------------------
-            # [수정] 타임존과 동일한 콜백 & 세션 저장 방식의 렌즈/조리개 UI
+            # [개선] 브랜드별 렌즈 선택 UI
             # -------------------------------------------------------------
             with st.expander("⚙️ 렌즈 / 조리개 수동 변경 (올드렌즈 설정)", expanded=True):
-                col_brand, col_lens, col_f = st.columns([1, 2, 1])
+                col_brand, col_lens, col_f = st.columns([1.2, 1.8, 1])
 
+                # 1. 브랜드 선택
                 with col_brand:
-                    brand_options = ["전체 렌즈 (통합 검색)"] + list(OLD_LENSES_BY_BRAND.keys())
+                    cur_brand = st.session_state.brand_dict[file_id]
+                    brand_idx = brand_list.index(cur_brand) if cur_brand in brand_list else 0
+
+                    def make_brand_callback(fid=file_id, uid=unique_id):
+                        return lambda: st.session_state.brand_dict.update({fid: st.session_state[f"brand_select_{uid}"]})
+
                     selected_brand = st.selectbox(
-                        "🔍 마운트 필터",
-                        brand_options,
-                        key=f"brand_{unique_id}"
+                        "🏷️ 브랜드",
+                        brand_list,
+                        index=brand_idx,
+                        key=f"brand_select_{unique_id}",
+                        on_change=make_brand_callback()
                     )
 
+                # 2. 선택된 브랜드에 종속된 렌즈 목록 선택
                 with col_lens:
-                    if selected_brand == "전체 렌즈 (통합 검색)":
-                        lens_options = ALL_OLD_LENSES
-                    else:
-                        lens_options = OLD_LENSES_BY_BRAND.get(selected_brand, ALL_OLD_LENSES)
+                    available_lenses = OLD_LENSES_BY_BRAND.get(selected_brand, ["EXIF 정보 사용"])
+                    cur_lens = st.session_state.lens_dict[file_id]
+                    lens_idx = available_lenses.index(cur_lens) if cur_lens in available_lenses else 0
 
-                    # 현재 세션에 저장된 렌즈 인덱스 찾기
-                    current_lens = st.session_state.lens_dict[file_id]
-                    lens_idx = lens_options.index(current_lens) if current_lens in lens_options else 0
-
-                    # 렌즈 선택 콜백 (타임존 방식과 동일)
                     def make_lens_callback(fid=file_id, uid=unique_id):
                         return lambda: st.session_state.lens_dict.update({fid: st.session_state[f"lens_select_{uid}"]})
 
                     selected_lens = st.selectbox(
-                        "🎞️ 렌즈 선택 (검색 가능)",
-                        options=lens_options,
+                        "🎞️ 렌즈 선택",
+                        options=available_lenses,
                         index=lens_idx,
                         key=f"lens_select_{unique_id}",
                         on_change=make_lens_callback()
                     )
 
-                    # 사용자 지정 입력 콜백
+                    # '사용자 지정 입력'일 때 직접 입력창 활성화
                     if selected_lens == "사용자 지정 입력":
                         def make_custom_lens_callback(fid=file_id, uid=unique_id):
                             return lambda: st.session_state.custom_lens_dict.update({fid: st.session_state[f"custom_lens_{uid}"]})
@@ -178,15 +194,16 @@ if uploaded_files:
                             on_change=make_custom_lens_callback()
                         )
 
+                # 3. 조리개 선택
                 with col_f:
-                    current_f = st.session_state.f_dict[file_id]
-                    f_idx = MANUAL_F_NUMBERS.index(current_f) if current_f in MANUAL_F_NUMBERS else 0
+                    cur_f = st.session_state.f_dict[file_id]
+                    f_idx = MANUAL_F_NUMBERS.index(cur_f) if cur_f in MANUAL_F_NUMBERS else 0
 
                     def make_f_callback(fid=file_id, uid=unique_id):
                         return lambda: st.session_state.f_dict.update({fid: st.session_state[f"f_select_{uid}"]})
 
                     st.selectbox(
-                        "🔘 촬영 조리개",
+                        "🔘 조리개(f/)",
                         MANUAL_F_NUMBERS,
                         index=f_idx,
                         key=f"f_select_{unique_id}",
@@ -194,17 +211,16 @@ if uploaded_files:
                     )
 
             # -------------------------------------------------------------
-            # 세션에서 최종 전달할 렌즈/조리개 값 추출
+            # 세션 데이터에서 최종 전달 값 처리
             # -------------------------------------------------------------
-            # 렌즈 처리
             chosen_manual_lens = ""
             selected_lens_val = st.session_state.lens_dict[file_id]
+            
             if selected_lens_val == "사용자 지정 입력":
                 chosen_manual_lens = st.session_state.custom_lens_dict[file_id]
             elif selected_lens_val != "EXIF 정보 사용":
                 chosen_manual_lens = selected_lens_val
 
-            # 조리개 처리
             chosen_manual_f = ""
             selected_f_val = st.session_state.f_dict[file_id]
             if selected_f_val != "EXIF 유지":
@@ -247,7 +263,7 @@ if uploaded_files:
 
             base_canvas = add_border(image, width, height, thickness, padding)
 
-            # place_model 호출
+            # place_model에 최종 덮어쓸 값 전달
             final_canvas = place_model(
                 base_canvas, picture, width, height, thickness, padding, logo_file,
                 chosen_utc=single_chosen_utc, 
