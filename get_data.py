@@ -190,10 +190,19 @@ class ReturnPictureEXIF():
 
         # F-Number 처리 (주석이나 따옴표가 잘리지 않도록 확인)
         f_val = self.exif.get("FNumber", "?")
-        if isinstance(f_val, tuple) and len(f_val) == 2:
-            f_val = f_val[0] / f_val[1] if f_val[1] != 0 else "?"
-        try:
-            self.f_number = float(round(float(f_val), 1))
+
+        if isinstance(f_val, str) and "/" in f_val:
+            try:
+                num, den = f_val.split("/")
+                f_val = float(num) / float(den) if float(den) != 0 else "?"
+            except:
+                pass
+
+
+        elif isinstance(f_val, tuple) and len(f_val) == 2:
+            try:
+                f_val = f_val[0] / f_val[1] if f_val[1] != 0 else "?"
+@@ -207,7 +215,6 @@ def __init__(self, image_path):
         except:
             self.f_number = f_val
 
