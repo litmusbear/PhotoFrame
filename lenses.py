@@ -99,3 +99,99 @@ KNOWN_COMPACT_LENSES = {
     "OLYMPUS MJU": "Olympus Zoom 35-70mm f/3.5-5.6",
     "OLYMPUS STYLUS EPIC": "35mm f/2.8",
 }
+
+OLD_LENSES_BY_BRAND = {
+    "💡 직접 입력": [
+        "직접 입력 (사용자 지정)"
+    ],
+    "🇯🇵 Yashica C/Y & M42 (야시카 / 야시논)": [
+        "Yashica Auto Yashinon-DX 50mm f/1.4",
+        "Yashica Auto Yashinon 50mm f/1.7",
+        "Yashica ML 50mm f/1.4",
+        "Yashica ML 50mm f/1.7",
+        "Yashica ML 50mm f/2.0",
+        "Yashica ML 35mm f/2.8",
+        "Yashica ML 28mm f/2.8",
+        "Yashica ML 135mm f/2.8",
+        "Yashica Tomioka 55mm f/1.2",
+        "Yashica Auto Yashinon 55mm f/1.2"
+    ],
+    "🇷🇺 M42 / 러시아 렌즈 (Helios, Jupiter, Industar)": [
+        "Helios-44-2 58mm f/2.0",
+        "Helios-44M-4 58mm f/2.0",
+        "Helios 40-2 85mm f/1.5",
+        "Jupiter-8 50mm f/2.0",
+        "Jupiter-9 85mm f/2.0",
+        "Jupiter-3 50mm f/1.5",
+        "Industar-61 L/D 50mm f/2.8",
+        "Industar-50-2 50mm f/3.5",
+        "Mir-1B 37mm f/2.8",
+        "Tair-11A 135mm f/2.8"
+    ],
+    "🇩🇪 Carl Zeiss / Voigtländer (자이스, 보이그랜더)": [
+        "Carl Zeiss Planar T* 50mm f/1.4",
+        "Carl Zeiss Planar T* 85mm f/1.4",
+        "Carl Zeiss Flektogon 35mm f/2.4",
+        "Carl Zeiss Tessar 50mm f/2.8",
+        "Carl Zeiss Sonnar 135mm f/3.5",
+        "Voigtlander Nokton 50mm f/1.2",
+        "Voigtlander Nokton 35mm f/1.4",
+        "Voigtlander Color-Skopar 35mm f/2.5",
+        "Voigtlander Ultron 28mm f/2.0",
+        "Voigtlander Heliar 15mm f/4.5"
+    ],
+    "🔴 Leica M / LTM (라이카)": [
+        "Leica Summicron-M 35mm f/2.0 ASPH",
+        "Leica Summicron-M 50mm f/2.0",
+        "Leica Summilux-M 35mm f/1.4 ASPH",
+        "Leica Summilux-M 50mm f/1.4",
+        "Leica Noctilux-M 50mm f/0.95 ASPH",
+        "Leica Elmarit-M 28mm f/2.8",
+        "Leica Summaron-M 35mm f/2.8",
+        "Leica Elmar 50mm f/2.8"
+    ],
+    "🇯🇵 Canon FD / FL (캐논 수동)": [
+        "Canon FD 50mm f/1.4 S.S.C.",
+        "Canon FD 50mm f/1.2 L",
+        "Canon FD 35mm f/2.0",
+        "Canon FD 28mm f/2.8",
+        "Canon FD 85mm f/1.8",
+        "Canon FL 50mm f/1.4",
+        "Canon FL 55mm f/1.2"
+    ],
+    "🇯🇵 Nikon AI / Nikkor (니콘 수동)": [
+        "Nikkor 50mm f/1.2 AI-s",
+        "Nikkor 50mm f/1.4 AI-s",
+        "Nikkor-S Auto 50mm f/1.4",
+        "Nikkor 35mm f/1.4 AI-s",
+        "Nikkor 28mm f/2.8 AI-s",
+        "Nikkor 85mm f/1.4 AI-s",
+        "Nikkor 105mm f/2.5 AI-s"
+    ],
+    "🇯🇵 Pentax K / M42 Takumar (펜탁스 타쿠마)": [
+        "SMC Takumar 50mm f/1.4",
+        "Super-Takumar 50mm f/1.4",
+        "Super-Takumar 35mm f/2.0",
+        "SMC Pentax-M 50mm f/1.4",
+        "SMC Pentax-M 50mm f/1.7",
+        "SMC Pentax-A 50mm f/1.2",
+        "SMC Pentax 28mm f/3.5"
+    ],
+    "🇯🇵 Olympus OM / Minolta MD (올림푸스, 미놀타)": [
+        "Olympus OM Zuiko 50mm f/1.4",
+        "Olympus OM Zuiko 50mm f/1.8",
+        "Olympus OM Zuiko 35mm f/2.0",
+        "Olympus OM Zuiko 28mm f/2.8",
+        "Minolta MD Rokkor 50mm f/1.4",
+        "Minolta MC Rokkor-PG 58mm f/1.2",
+        "Minolta MD 35mm f/1.8",
+        "Minolta MD 28mm f/2.8"
+    ]
+}
+
+# 자주 쓰이는 수동 조리개값 목록
+MANUAL_F_NUMBERS = [
+    "EXIF 유지",
+    "f/0.95", "f/1.2", "f/1.4", "f/1.7", "f/1.8", "f/2.0",
+    "f/2.8", "f/3.5", "f/4.0", "f/5.6", "f/8.0", "f/11", "f/16"
+]
