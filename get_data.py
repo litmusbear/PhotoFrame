@@ -5,7 +5,12 @@ from PIL import Image, ImageOps
 from PIL.ExifTags import TAGS
 import pytz
 from timezonefinder import TimezoneFinder
-from lenses import KNOWN_COMPACT_LENSES
+
+# lenses.py 불러오기 예외 처리
+try:
+    from lenses import KNOWN_COMPACT_LENSES
+except ImportError:
+    KNOWN_COMPACT_LENSES = {}
 
 def get_exif_data(image_path):
     exif_dict = {}
