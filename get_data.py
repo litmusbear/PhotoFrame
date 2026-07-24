@@ -179,15 +179,34 @@ class ReturnPictureEXIF():
         self.exif = get_exif_data(image_path)
         self.image = ImageOps.exif_transpose(img)
         self.camera = clean_camera_name(self.exif)
-        self.iso = self.exif.get("ISOSpeedRatings", "?")
-
+        self.iso = self.exif.get("# F-Number 처리 (분수 형태 문자열, 튜플, float 모두 대응)
         f_val = self.exif.get("FNumber", "?")
-        if isinstance(f_val, tuple) and len(f_val) == 2:
-            f_val = f_val[0] / f_val[1] if f_val[1] != 0 else "?"
+
+
+        if isinstance(f_val, str) and "/" in f_val:
+            try:
+                num, den = f_val.split("/")
+                f_val = float(num) / float(den) if float(den) != 0 else "?"
+            except:
+                pass
+
+
+        elif isinstance(f_val, tuple) and len(f_val) == 2:
+            try:
+                f_val = f_val[0] / f_val[1] if f_val[1] != 0 else "?"
+            except:
+                pass
+
         try:
-            self.f_number = float(round(float(f_val), 1))
+            if f_val != "?":
+                self.f_number = round(float(f_val), 1)
+                if self.f_number.is_integer():
+                    self.f_number = int(self.f_number)
+            else:
+                self.f_number = "?"
         except:
             self.f_number = f_val
+
 
         self.shutter = get_shutter(self.exif)
         self.datetime = get_datetime(self.exif)
