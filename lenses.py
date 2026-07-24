@@ -101,47 +101,35 @@ KNOWN_COMPACT_LENSES = {
 }
 
 OLD_LENSES_BY_BRAND = {
-    "EXIF 기본값 사용": ["EXIF 정보 사용"],
-    "Yashica / Contax (C/Y)": [
+    "EXIF 기본값": ["EXIF 정보 사용"],
+    "직접 입력": ["사용자 지정 입력"],
+    "Yashica / Contax": [
         "Yashica ML 50mm f/1.4",
         "Yashica ML 50mm f/1.7",
         "Yashica ML 28mm f/2.8",
         "Carl Zeiss Planar T* 50mm f/1.4 C/Y",
-        "Carl Zeiss Planar T* 50mm f/1.7 C/Y",
-        "Carl Zeiss Biogon T* 28mm f/2.8 C/Y",
+        "Carl Zeiss Planar T* 50mm f/1.7 C/Y"
     ],
-    "M42 Screw Mount": [
+    "Pentax / M42": [
         "Helios 44-2 58mm f/2.0",
-        "Helios 44M 58mm f/2.0",
         "Asahi Pentax Super-Takumar 50mm f/1.4",
         "Asahi Pentax Super-Takumar 55mm f/1.8",
-        "Jupiter-9 85mm f/2.0",
-        "Industar-61 L/Z 50mm f/2.8",
+        "Industar-61 L/Z 50mm f/2.8"
     ],
-    "Leica M / L39": [
+    "Leica / L39": [
         "Leica Summicron-M 50mm f/2.0",
         "Leica Summilux-M 50mm f/1.4",
-        "Leica Summaron 35mm f/3.5",
-        "Voigtlander Nokton 50mm f/1.2",
+        "Voigtlander Nokton 50mm f/1.2"
     ],
     "Canon FD": [
         "Canon FD 50mm f/1.4 SSC",
-        "Canon FD 50mm f/1.8 SC",
-        "Canon FD 28mm f/2.8",
+        "Canon FD 50mm f/1.8 SC"
     ],
-    "Nikon F (Manual)": [
+    "Nikon F": [
         "Nikkor-S Auto 50mm f/1.4",
-        "Nikkor-P Auto 105mm f/2.5",
-        "Nikkor AI 50mm f/1.8",
-    ],
-    "직접 입력": ["사용자 지정 입력"]
+        "Nikkor AI 50mm f/1.8"
+    ]
 }
-
-# 검색용 전체 렌즈 단일 리스트 생성
-ALL_OLD_LENSES = ["EXIF 정보 사용", "사용자 지정 입력"]
-for brand, lenses in OLD_LENSES_BY_BRAND.items():
-    if brand not in ["EXIF 기본값 사용", "직접 입력"]:
-        ALL_OLD_LENSES.extend(lenses)
 
 MANUAL_F_NUMBERS = [
     "EXIF 유지", "f/1.2", "f/1.4", "f/1.8", "f/2.0", "f/2.8", 
