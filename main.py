@@ -152,29 +152,37 @@ if uploaded_files:
             st.subheader(f"🖼️ 원본 파일: {uploaded_file.name}")
 
             # -------------------------------------------------------------
-            # [수정] EXIF 데이터 존재 여부 정밀 판별 (Lens Unspecified, f/0.0, 0mm 등 무효값 필터링)
+            # [수정] ReturnPictureEXIF의 대체 문자열 패턴을 완벽히 분리 및 검출
             # -------------------------------------------------------------
-            raw_lens = str(picture.get_lens() if hasattr(picture, "get_lens") else "").strip()
-            raw_focal = str(picture.get_focal_length() if hasattr(picture, "get_focal_length") else "").strip()
+            
+            # 1) raw 렌즈 및 원본 EXIF 태그 직접 확인
+            raw_lens_full = str(picture.get_lens() if hasattr(picture, "get_lens") else "").strip()
+            exif_data_raw = picture.exif if hasattr(picture, "exif") else {}
+            raw_lens_tag = str(exif_data_raw.get("LensModel", "")).strip()
+            
+            # 'Lens Unspecified'라는 대체 문구가 들어갔거나 LensModel 태그가 비어있으면 렌즈 없음 처리
+            has_lens = bool(raw_lens_tag) and ("lens unspecified" not in raw_lens_full.lower()) and (raw_lens_tag.lower() not in ["none", "unknown", "?", "built-in"])
+
+            # 2) 화각(Focal Length) 정밀 검출
+            # EXIF Dictionary에서 35mm 환산 화각 혹은 일반 화각 확인
+            eq_focal = exif_data_raw.get("FocalLengthIn35mmFilm", "")
+            if not eq_focal or str(eq_focal) == "?":
+                eq_focal = exif_data_raw.get("FocalLength", "")
+            
+            focal_val_str = str(eq_focal).strip()
+            # 0, ?, empty, 0mm 등은 화각 없음 처리
+            has_focal = bool(focal_val_str) and (focal_val_str not in ["?", "None", "0", "0.0"])
+
+            # 3) 조리개(F-Number) 정밀 검출
             raw_f_num = str(picture.get_f_number() if hasattr(picture, "get_f_number") else "").strip()
+            # '?', '0.0', '0' 등은 조리개 없음 처리
+            has_f_num = bool(raw_f_num) and (raw_f_num not in ["?", "None", "0.0", "0", "f/0.0", "f/0"])
 
-            # 1) 렌즈 판별 (Lens Unspecified, Unspecified, ?, None 등 제외)
-            invalid_lenses = ["", "?", "none", "unknown", "unspecified", "lens unspecified"]
-            has_lens = bool(raw_lens) and (raw_lens.lower() not in invalid_lenses)
-
-            # 2) 화각 판별 (0, 0mm, 0.0mm, ?, None 등 제외)
-            invalid_focals = ["", "?", "none", "0", "0mm", "0.0mm", "0.0"]
-            has_focal = bool(raw_focal) and (raw_focal.lower() not in invalid_focals)
-
-            # 3) 조리개 판별 (0, 0.0, f/0.0, ?, None 등 제외)
-            invalid_f_nums = ["", "?", "none", "0", "0.0", "f/0.0", "f/0"]
-            has_f_num = bool(raw_f_num) and (raw_f_num.lower() not in invalid_f_nums)
-
-            # 세 항목 중 하나라도 없거나 무효하면 수동 입력 패널 생성
+            # 없는 정보가 하나라도 있을 때만 동적 UI 박스 생성
             if not (has_lens and has_focal and has_f_num):
                 with st.expander("⚙️ 누락된 EXIF 정보 수동 입력", expanded=True):
                     
-                    # 동적 컬럼 생성 준비
+                    # 활성화할 컬럼 개수 계산
                     active_cols = []
                     if not has_lens:
                         active_cols.extend(["brand", "lens"])
@@ -186,7 +194,7 @@ if uploaded_files:
                     cols = st.columns(len(active_cols))
                     col_idx = 0
 
-                    # 1. 렌즈 선택 UI (렌즈 정보가 없을 때만)
+                    # 렌즈 선택 (EXIF에 실재 렌즈명이 없을 때만)
                     if not has_lens:
                         with cols[col_idx]:
                             cur_brand = st.session_state.brand_dict[file_id]
@@ -233,7 +241,7 @@ if uploaded_files:
                                 )
                         col_idx += 1
 
-                    # 2. 화각 선택 UI (화각 정보가 없을 때만)
+                    # 화각 선택 (EXIF에 실제 화각이 없을 때만)
                     if not has_focal:
                         with cols[col_idx]:
                             cur_focal = st.session_state.focal_dict[file_id]
@@ -263,7 +271,7 @@ if uploaded_files:
                                 )
                         col_idx += 1
 
-                    # 3. 조리개 선택 UI (조리개 정보가 없을 때만)
+                    # 조리개 선택 (EXIF에 실제 조리개 값이 없을 때만)
                     if not has_f_num:
                         with cols[col_idx]:
                             cur_f = st.session_state.f_dict[file_id]
@@ -281,7 +289,7 @@ if uploaded_files:
                             )
 
             # -------------------------------------------------------------
-            # 세션 데이터에서 최종 전달 값 처리 (누락된 항목만 세션값 사용)
+            # 세션 데이터에서 최종 전달 값 처리 (누락된 항목만 세션값 적용)
             # -------------------------------------------------------------
             chosen_manual_lens = ""
             if not has_lens:
@@ -342,7 +350,7 @@ if uploaded_files:
 
             base_canvas = add_border(image, width, height, thickness, padding)
 
-            # place_model에 최종 덮어쓸 값 전달
+            # place_model에 최종 수동 입력/오버라이드 값 전달
             final_canvas = place_model(
                 base_canvas, picture, width, height, thickness, padding, logo_file,
                 chosen_utc=single_chosen_utc, 
