@@ -17,14 +17,13 @@ from get_data import ReturnPictureEXIF
 from logo import logo
 from border import *
 
-# lenses.py 파일에서 올드렌즈 정보 불러오기 (파일이 없을 경우 대비 예외처리)
+# lenses.py 연동
 try:
-    from lenses import OLD_LENSES_BY_BRAND, MANUAL_F_NUMBERS
+    from lenses import OLD_LENSES_BY_BRAND, ALL_OLD_LENSES, MANUAL_F_NUMBERS
 except ImportError:
-    OLD_LENSES_BY_BRAND = {
-        "기타/직접입력": ["직접 입력 (사용자 지정)"]
-    }
-    MANUAL_F_NUMBERS = ["EXIF 유지", "f/1.2", "f/1.4", "f/1.8", "f/2.0", "f/2.8", "f/4.0", "f/5.6", "f/8.0", "f/11", "f/16"]
+    ALL_OLD_LENSES = ["EXIF 정보 사용", "사용자 지정 입력", "Helios 44-2 58mm f/2.0", "Yashica ML 50mm f/1.4"]
+    OLD_LENSES_BY_BRAND = {"전체": ALL_OLD_LENSES}
+    MANUAL_F_NUMBERS = ["EXIF 유지", "f/1.2", "f/1.4", "f/1.8", "f/2.0", "f/2.8", "f/4.0", "f/5.6", "f/8.0"]
 
 def extract_exif_bytes(source_path):
     if HAS_PIEXIF:
@@ -48,18 +47,13 @@ st.set_page_config(page_title="사진 데이터 프레임 생성기", layout="ce
 
 st.markdown("""
     <style>
-    /* 다크모드 대응: 전체 배경 및 기본 글자색 고정 */
     .stApp, [data-testid="stAppViewContainer"] {
         background-color: #FBF9F6 !important;
         color: #222222 !important;
     }
-
-    /* 헤더 및 각종 타이틀 텍스트 색상 고정 */
     h1, h2, h3, h4, h5, h6, p, span, label {
         color: #222222 !important;
     }
-
-    /* 업로드 박스 디자인 고정 */
     .stFileUploader, [data-testid="stFileUploader"] {
         background-color: #ffffff !important;
         padding: 25px;
@@ -67,8 +61,6 @@ st.markdown("""
         box-shadow: 0px 8px 24px rgba(149, 157, 165, 0.06);
         border: 1px dashed #E2DFD9 !important;
     }
-
-    /* 안내 문구 스타일 고정 */
     .info-text {
         color: #6E6E6E !important;
         font-size: 0.95rem;
@@ -98,7 +90,7 @@ if uploaded_files:
         if file_id not in st.session_state.tz_dict:
             st.session_state.tz_dict[file_id] = "UTC+09:00 (한국/일본/인도네시아 동부)"
 
-        unique_id = f"{uuid.uuid4().hex[:8]}_{idx}"
+        unique_id = f"{uuid.uuid4().hex[:6]}_{idx}"
         temp_path = f"temp_{unique_id}.jpg"
         temp_file_paths.append(temp_path)
 
@@ -116,62 +108,66 @@ if uploaded_files:
 
             width = get_width(image)
             height = get_height(image)
-
             thickness = get_thickness(height)
             padding = get_padding(height)
-
             logo_file = logo(picture)
 
             st.subheader(f"🖼️ 원본 파일: {uploaded_file.name}")
 
             # -------------------------------------------------------------
-            # [신규] 수동 / 올드렌즈 선택 UI
+            # [개선] 마운트 필터링 + 통합 검색 지원 렌즈 설정 UI
             # -------------------------------------------------------------
             chosen_manual_lens = ""
             chosen_manual_f = ""
 
-            with st.expander("⚙️ 렌즈 정보 / 조리개 값 수동 변경 (올드렌즈 설정)", expanded=True):
-                col_brand, col_lens, col_f = st.columns([1.2, 1.5, 1])
+            with st.expander("⚙️ 올드렌즈 검색 / 조리개(f) 수동 입력", expanded=True):
+                col_brand, col_lens, col_f = st.columns([1, 2, 1])
 
                 with col_brand:
+                    # 마운트/브랜드 필터 선택 (기본값: 전체 렌즈 검색 가능)
+                    brand_options = ["전체 렌즈 (통합 검색)"] + list(OLD_LENSES_BY_BRAND.keys())
                     selected_brand = st.selectbox(
-                        "🏢 브랜드/마운트",
-                        list(OLD_LENSES_BY_BRAND.keys()),
+                        "🔍 마운트 필터",
+                        brand_options,
                         key=f"brand_{unique_id}"
                     )
 
                 with col_lens:
-                    available_lenses = OLD_LENSES_BY_BRAND.get(selected_brand, [])
+                    # 선택된 마운트에 맞춰 렌즈 목록 필터링 (타이핑 시 실시간 검색 가능)
+                    if selected_brand == "전체 렌즈 (통합 검색)":
+                        lens_options = ALL_OLD_LENSES
+                    else:
+                        lens_options = OLD_LENSES_BY_BRAND.get(selected_brand, ALL_OLD_LENSES)
+
                     selected_lens = st.selectbox(
-                        "🎞️ 렌즈 선택",
-                        available_lenses,
-                        key=f"lens_{unique_id}"
+                        "🎞️ 렌즈 선택 (타이핑하여 검색 가능)",
+                        options=lens_options,
+                        key=f"lens_select_{unique_id}"
                     )
-                    
-                    if selected_lens == "직접 입력 (사용자 지정)":
-                        custom_input = st.text_input(
-                            "렌즈 이름 입력",
+
+                    # 직접 입력 선택 시 텍스트 입력창 노출
+                    if selected_lens == "사용자 지정 입력":
+                        chosen_manual_lens = st.text_input(
+                            "렌즈명 직접 입력",
                             placeholder="예: Jupiter-8 50mm f/2.0",
-                            key=f"custom_lens_{unique_id}"
+                            key=f"custom_lens_input_{unique_id}"
                         )
-                        chosen_manual_lens = custom_input
                     elif selected_lens != "EXIF 정보 사용":
                         chosen_manual_lens = selected_lens
 
                 with col_f:
                     selected_f = st.selectbox(
-                        "🔘 조리개 (f/)",
+                        "🔘 촬영 조리개",
                         MANUAL_F_NUMBERS,
-                        key=f"f_{unique_id}"
+                        key=f"f_select_{unique_id}"
                     )
                     if selected_f != "EXIF 유지":
-                        chosen_manual_f = selected_f.replace("f/", "")
+                        chosen_manual_f = selected_f.replace("f/", "").strip()
 
             # -------------------------------------------------------------
             # 타임존 선택 UI
             # -------------------------------------------------------------
             show_timezone_selector = True
-
             try:
                 with Image.open(temp_path) as img_exif:
                     exif_data = img_exif._getexif()
@@ -204,8 +200,8 @@ if uploaded_files:
             single_chosen_utc = st.session_state.tz_dict[file_id].split(" ")[0]
 
             base_canvas = add_border(image, width, height, thickness, padding)
-            
-            # place_model 호출 시 수동 설정된 렌즈와 조리개 전달
+
+            # place_model 호출 시 최종 변경값 명시적 전달
             final_canvas = place_model(
                 base_canvas, picture, width, height, thickness, padding, logo_file,
                 chosen_utc=single_chosen_utc, 
