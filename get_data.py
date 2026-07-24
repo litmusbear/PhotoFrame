@@ -12,7 +12,10 @@ try:
 except ImportError:
     HAS_EXIFTOOL = False
 
-import exifread
+try:
+    import exifread
+except ImportError:
+    exifread = None
 
 
 def get_exif_data(image_path):
