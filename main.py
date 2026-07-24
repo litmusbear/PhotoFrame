@@ -258,7 +258,7 @@ if uploaded_files:
                                 return lambda: st.session_state.focal_dict.update({fid: st.session_state[f"focal_select_{uid}"]})
 
                             selected_focal = st.selectbox(
-                                "📐 화각",
+                                "📐 풀프레임 환산 화각",
                                 COMMON_EQUIV_FOCAL_LENGTHS,
                                 index=focal_idx,
                                 key=f"focal_select_{unique_id}",
