@@ -117,7 +117,10 @@ if uploaded_files:
         if file_id not in st.session_state.brand_dict:
             st.session_state.brand_dict[file_id] = brand_list[0] if brand_list else ""
         if file_id not in st.session_state.lens_dict:
-            st.session_state.lens_dict[file_id] = "EXIF 정보 사용"
+            # 초기 기본 브랜드의 최상단 렌즈 항목을 기본값으로 지정
+            default_brand = st.session_state.brand_dict[file_id]
+            default_lenses = OLD_LENSES_BY_BRAND.get(default_brand, ["EXIF 정보 사용"])
+            st.session_state.lens_dict[file_id] = default_lenses[0] if default_lenses else "EXIF 정보 사용"
         if file_id not in st.session_state.custom_lens_dict:
             st.session_state.custom_lens_dict[file_id] = ""
         if file_id not in st.session_state.f_dict:
@@ -152,37 +155,28 @@ if uploaded_files:
             st.subheader(f"🖼️ 원본 파일: {uploaded_file.name}")
 
             # -------------------------------------------------------------
-            # [수정] ReturnPictureEXIF의 대체 문자열 패턴을 완벽히 분리 및 검출
+            # ReturnPictureEXIF의 대체 문자열 패턴을 완벽히 분리 및 검출
             # -------------------------------------------------------------
-            
-            # 1) raw 렌즈 및 원본 EXIF 태그 직접 확인
             raw_lens_full = str(picture.get_lens() if hasattr(picture, "get_lens") else "").strip()
             exif_data_raw = picture.exif if hasattr(picture, "exif") else {}
             raw_lens_tag = str(exif_data_raw.get("LensModel", "")).strip()
             
-            # 'Lens Unspecified'라는 대체 문구가 들어갔거나 LensModel 태그가 비어있으면 렌즈 없음 처리
             has_lens = bool(raw_lens_tag) and ("lens unspecified" not in raw_lens_full.lower()) and (raw_lens_tag.lower() not in ["none", "unknown", "?", "built-in"])
 
-            # 2) 화각(Focal Length) 정밀 검출
-            # EXIF Dictionary에서 35mm 환산 화각 혹은 일반 화각 확인
             eq_focal = exif_data_raw.get("FocalLengthIn35mmFilm", "")
             if not eq_focal or str(eq_focal) == "?":
                 eq_focal = exif_data_raw.get("FocalLength", "")
             
             focal_val_str = str(eq_focal).strip()
-            # 0, ?, empty, 0mm 등은 화각 없음 처리
             has_focal = bool(focal_val_str) and (focal_val_str not in ["?", "None", "0", "0.0"])
 
-            # 3) 조리개(F-Number) 정밀 검출
             raw_f_num = str(picture.get_f_number() if hasattr(picture, "get_f_number") else "").strip()
-            # '?', '0.0', '0' 등은 조리개 없음 처리
             has_f_num = bool(raw_f_num) and (raw_f_num not in ["?", "None", "0.0", "0", "f/0.0", "f/0"])
 
             # 없는 정보가 하나라도 있을 때만 동적 UI 박스 생성
             if not (has_lens and has_focal and has_f_num):
                 with st.expander("⚙️ 누락된 EXIF 정보 수동 입력", expanded=True):
                     
-                    # 활성화할 컬럼 개수 계산
                     active_cols = []
                     if not has_lens:
                         active_cols.extend(["brand", "lens"])
@@ -194,14 +188,21 @@ if uploaded_files:
                     cols = st.columns(len(active_cols))
                     col_idx = 0
 
-                    # 렌즈 선택 (EXIF에 실재 렌즈명이 없을 때만)
+                    # 1. 렌즈 선택 UI
                     if not has_lens:
                         with cols[col_idx]:
                             cur_brand = st.session_state.brand_dict[file_id]
                             brand_idx = brand_list.index(cur_brand) if cur_brand in brand_list else 0
 
+                            # 브랜드 변경 시 렌즈 선택창의 최상단(첫 번째) 항목으로 자동 세팅하는 콜백
                             def make_brand_callback(fid=file_id, uid=unique_id):
-                                return lambda: st.session_state.brand_dict.update({fid: st.session_state[f"brand_select_{uid}"]})
+                                def callback():
+                                    new_brand = st.session_state[f"brand_select_{uid}"]
+                                    st.session_state.brand_dict[fid] = new_brand
+                                    lenses_for_brand = OLD_LENSES_BY_BRAND.get(new_brand, ["EXIF 정보 사용"])
+                                    if lenses_for_brand:
+                                        st.session_state.lens_dict[fid] = lenses_for_brand[0]
+                                return callback
 
                             selected_brand = st.selectbox(
                                 "🏷️ 브랜드",
@@ -215,7 +216,13 @@ if uploaded_files:
                         with cols[col_idx]:
                             available_lenses = OLD_LENSES_BY_BRAND.get(selected_brand, ["EXIF 정보 사용"])
                             cur_lens = st.session_state.lens_dict[file_id]
-                            lens_idx = available_lenses.index(cur_lens) if cur_lens in available_lenses else 0
+                            
+                            # 만약 현재 세션 렌즈값이 현재 브랜드 렌즈 목록에 없으면 최상단 항목으로 맞춤
+                            if cur_lens not in available_lenses:
+                                cur_lens = available_lenses[0] if available_lenses else "EXIF 정보 사용"
+                                st.session_state.lens_dict[file_id] = cur_lens
+
+                            lens_idx = available_lenses.index(cur_lens)
 
                             def make_lens_callback(fid=file_id, uid=unique_id):
                                 return lambda: st.session_state.lens_dict.update({fid: st.session_state[f"lens_select_{uid}"]})
@@ -241,7 +248,7 @@ if uploaded_files:
                                 )
                         col_idx += 1
 
-                    # 화각 선택 (EXIF에 실제 화각이 없을 때만)
+                    # 2. 화각 선택 UI
                     if not has_focal:
                         with cols[col_idx]:
                             cur_focal = st.session_state.focal_dict[file_id]
@@ -271,7 +278,7 @@ if uploaded_files:
                                 )
                         col_idx += 1
 
-                    # 조리개 선택 (EXIF에 실제 조리개 값이 없을 때만)
+                    # 3. 조리개 선택 UI
                     if not has_f_num:
                         with cols[col_idx]:
                             cur_f = st.session_state.f_dict[file_id]
