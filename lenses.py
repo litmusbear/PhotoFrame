@@ -100,6 +100,14 @@ KNOWN_COMPACT_LENSES = {
     "OLYMPUS STYLUS EPIC": "35mm f/2.8",
 }
 
+COMMON_EQUIV_FOCAL_LENGTHS = [
+    "EXIF 유지",
+    "14mm", "18mm", "20mm", "24mm", "28mm", "35mm", "40mm", 
+    "50mm", "58mm", "85mm", "90mm", "105mm", "135mm", "200mm",
+    "직접 입력"
+]
+
+# 3. 브랜드/마운트별 올드렌즈 카테고리
 OLD_LENSES_BY_BRAND = {
     "기본 및 직접 입력": [
         "EXIF 정보 사용",
@@ -178,13 +186,6 @@ OLD_LENSES_BY_BRAND = {
         "Olympus OM-System Zuiko Auto-T 135mm f/2.8"
     ]
 }
-
-# 3. 모든 렌즈 단일 리스트 (통합 검색용)
-ALL_OLD_LENSES = []
-for brand, lenses in OLD_LENSES_BY_BRAND.items():
-    for l in lenses:
-        if l not in ALL_OLD_LENSES:
-            ALL_OLD_LENSES.append(l)
 
 # 4. 수동 조리개 수치 목록
 MANUAL_F_NUMBERS = [
