@@ -82,13 +82,28 @@ uploaded_files = st.file_uploader(
 if uploaded_files:
     temp_file_paths = []
 
+    # 1. 타임존, 렌즈, 조리개 세션 딕셔너리 초기화 (타임존 방식과 동일)
     if "tz_dict" not in st.session_state:
         st.session_state.tz_dict = {}
+    if "lens_dict" not in st.session_state:
+        st.session_state.lens_dict = {}
+    if "custom_lens_dict" not in st.session_state:
+        st.session_state.custom_lens_dict = {}
+    if "f_dict" not in st.session_state:
+        st.session_state.f_dict = {}
 
     for idx, uploaded_file in enumerate(uploaded_files):
         file_id = uploaded_file.name
+        
+        # 기본값 세팅
         if file_id not in st.session_state.tz_dict:
             st.session_state.tz_dict[file_id] = "UTC+09:00 (한국/일본/인도네시아 동부)"
+        if file_id not in st.session_state.lens_dict:
+            st.session_state.lens_dict[file_id] = "EXIF 정보 사용"
+        if file_id not in st.session_state.custom_lens_dict:
+            st.session_state.custom_lens_dict[file_id] = ""
+        if file_id not in st.session_state.f_dict:
+            st.session_state.f_dict[file_id] = "EXIF 유지"
 
         unique_id = f"{uuid.uuid4().hex[:6]}_{idx}"
         temp_path = f"temp_{unique_id}.jpg"
@@ -115,16 +130,12 @@ if uploaded_files:
             st.subheader(f"🖼️ 원본 파일: {uploaded_file.name}")
 
             # -------------------------------------------------------------
-            # [개선] 마운트 필터링 + 통합 검색 지원 렌즈 설정 UI
+            # [수정] 타임존과 동일한 콜백 & 세션 저장 방식의 렌즈/조리개 UI
             # -------------------------------------------------------------
-            chosen_manual_lens = ""
-            chosen_manual_f = ""
-
-            with st.expander("⚙️ 올드렌즈 검색 / 조리개(f) 수동 입력", expanded=True):
+            with st.expander("⚙️ 렌즈 / 조리개 수동 변경 (올드렌즈 설정)", expanded=True):
                 col_brand, col_lens, col_f = st.columns([1, 2, 1])
 
                 with col_brand:
-                    # 마운트/브랜드 필터 선택 (기본값: 전체 렌즈 검색 가능)
                     brand_options = ["전체 렌즈 (통합 검색)"] + list(OLD_LENSES_BY_BRAND.keys())
                     selected_brand = st.selectbox(
                         "🔍 마운트 필터",
@@ -133,36 +144,71 @@ if uploaded_files:
                     )
 
                 with col_lens:
-                    # 선택된 마운트에 맞춰 렌즈 목록 필터링 (타이핑 시 실시간 검색 가능)
                     if selected_brand == "전체 렌즈 (통합 검색)":
                         lens_options = ALL_OLD_LENSES
                     else:
                         lens_options = OLD_LENSES_BY_BRAND.get(selected_brand, ALL_OLD_LENSES)
 
+                    # 현재 세션에 저장된 렌즈 인덱스 찾기
+                    current_lens = st.session_state.lens_dict[file_id]
+                    lens_idx = lens_options.index(current_lens) if current_lens in lens_options else 0
+
+                    # 렌즈 선택 콜백 (타임존 방식과 동일)
+                    def make_lens_callback(fid=file_id, uid=unique_id):
+                        return lambda: st.session_state.lens_dict.update({fid: st.session_state[f"lens_select_{uid}"]})
+
                     selected_lens = st.selectbox(
-                        "🎞️ 렌즈 선택 (타이핑하여 검색 가능)",
+                        "🎞️ 렌즈 선택 (검색 가능)",
                         options=lens_options,
-                        key=f"lens_select_{unique_id}"
+                        index=lens_idx,
+                        key=f"lens_select_{unique_id}",
+                        on_change=make_lens_callback()
                     )
 
-                    # 직접 입력 선택 시 텍스트 입력창 노출
+                    # 사용자 지정 입력 콜백
                     if selected_lens == "사용자 지정 입력":
-                        chosen_manual_lens = st.text_input(
+                        def make_custom_lens_callback(fid=file_id, uid=unique_id):
+                            return lambda: st.session_state.custom_lens_dict.update({fid: st.session_state[f"custom_lens_{uid}"]})
+
+                        st.text_input(
                             "렌즈명 직접 입력",
+                            value=st.session_state.custom_lens_dict[file_id],
                             placeholder="예: Jupiter-8 50mm f/2.0",
-                            key=f"custom_lens_input_{unique_id}"
+                            key=f"custom_lens_{unique_id}",
+                            on_change=make_custom_lens_callback()
                         )
-                    elif selected_lens != "EXIF 정보 사용":
-                        chosen_manual_lens = selected_lens
 
                 with col_f:
-                    selected_f = st.selectbox(
+                    current_f = st.session_state.f_dict[file_id]
+                    f_idx = MANUAL_F_NUMBERS.index(current_f) if current_f in MANUAL_F_NUMBERS else 0
+
+                    def make_f_callback(fid=file_id, uid=unique_id):
+                        return lambda: st.session_state.f_dict.update({fid: st.session_state[f"f_select_{uid}"]})
+
+                    st.selectbox(
                         "🔘 촬영 조리개",
                         MANUAL_F_NUMBERS,
-                        key=f"f_select_{unique_id}"
+                        index=f_idx,
+                        key=f"f_select_{unique_id}",
+                        on_change=make_f_callback()
                     )
-                    if selected_f != "EXIF 유지":
-                        chosen_manual_f = selected_f.replace("f/", "").strip()
+
+            # -------------------------------------------------------------
+            # 세션에서 최종 전달할 렌즈/조리개 값 추출
+            # -------------------------------------------------------------
+            # 렌즈 처리
+            chosen_manual_lens = ""
+            selected_lens_val = st.session_state.lens_dict[file_id]
+            if selected_lens_val == "사용자 지정 입력":
+                chosen_manual_lens = st.session_state.custom_lens_dict[file_id]
+            elif selected_lens_val != "EXIF 정보 사용":
+                chosen_manual_lens = selected_lens_val
+
+            # 조리개 처리
+            chosen_manual_f = ""
+            selected_f_val = st.session_state.f_dict[file_id]
+            if selected_f_val != "EXIF 유지":
+                chosen_manual_f = selected_f_val.replace("f/", "").strip()
 
             # -------------------------------------------------------------
             # 타임존 선택 UI
@@ -181,7 +227,7 @@ if uploaded_files:
                 pass
 
             if show_timezone_selector:
-                def make_callback(fid=file_id, uid=unique_id):
+                def make_tz_callback(fid=file_id, uid=unique_id):
                     return lambda: st.session_state.tz_dict.update({fid: st.session_state[f"selectbox_{uid}"]})
 
                 if st.session_state.tz_dict[file_id] in timezone_options:
@@ -194,14 +240,14 @@ if uploaded_files:
                     timezone_options,
                     index=current_index,
                     key=f"selectbox_{unique_id}",
-                    on_change=make_callback()
+                    on_change=make_tz_callback()
                 )
 
             single_chosen_utc = st.session_state.tz_dict[file_id].split(" ")[0]
 
             base_canvas = add_border(image, width, height, thickness, padding)
 
-            # place_model 호출 시 최종 변경값 명시적 전달
+            # place_model 호출
             final_canvas = place_model(
                 base_canvas, picture, width, height, thickness, padding, logo_file,
                 chosen_utc=single_chosen_utc, 
