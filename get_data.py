@@ -16,7 +16,7 @@ def get_exif_data(image_path):
     exif_dict = {}
     try:
         with open(image_path, 'rb') as f:
-            tags = exifread.process_file(f, details=False)
+            tags = exifread.process_file(f, details=True)
             if tags:
                 for tag, val in tags.items():
                     clean_tag = tag.split()[-1] if ' ' in tag else tag
