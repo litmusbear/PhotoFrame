@@ -89,7 +89,59 @@ def get_shutter(exif):
         return f"{round(val, 1)}\""
 
 
-# --- 화각(Focal Length) 자동 추출 로직 (GPS 추출 방식과 동일) ---
+def convert_to_degrees(value):
+    try:
+        d = float(value[0][0] / value[0][1]) if isinstance(value[0], tuple) else float(value[0])
+        m = float(value[1][0] / value[1][1]) if isinstance(value[1], tuple) else float(value[1])
+        s = float(value[2][0] / value[2][1]) if isinstance(value[2], tuple) else float(value[2])
+        return d + (m / 60.0) + (s / 3600.0)
+    except Exception:
+        return 0.0
+
+
+def get_gps(exif):
+    gps_info = exif.get("GPSInfo", {})
+    if not gps_info:
+        return None
+    try:
+        lat = convert_to_degrees(gps_info[2])
+        if gps_info.get(1) == 'S': lat = -lat
+        lon = convert_to_degrees(gps_info[4])
+        if gps_info.get(3) == 'W': lon = -lon
+        return lat, lon
+    except Exception:
+        return None
+
+
+def get_datetime(exif):
+    date_str = exif.get("DateTimeOriginal", "")
+    if not date_str: return ""
+
+    try:
+        dt = datetime.strptime(str(date_str), "%Y:%m:%d %H:%M:%S")
+    except Exception:
+        return str(date_str)
+
+    coords = get_gps(exif)
+    utc_offset_str = "UTC+00:00"
+
+    if coords:
+        try:
+            tf = TimezoneFinder()
+            tz_name = tf.timezone_at(lat=coords[0], lng=coords[1])
+            if tz_name:
+                timezone = pytz.timezone(tz_name)
+                aware_dt = timezone.localize(dt)
+                utc_offset = aware_dt.utcoffset()
+                hours = int(utc_offset.total_seconds() / 3600)
+                minutes = int((utc_offset.total_seconds() % 3600) / 60)
+                utc_offset_str = f"UTC{'+' if hours >= 0 else ''}{hours:02d}:{abs(minutes):02d}"
+        except Exception:
+            pass
+
+    return dt.strftime(f"%Y-%b-%d %H:%M {utc_offset_str}")
+
+
 def get_focal_length(exif):
     eq_focal = exif.get("FocalLengthIn35mmFilm", "")
     if isinstance(eq_focal, tuple) and len(eq_focal) == 2:
@@ -176,10 +228,9 @@ class ReturnPictureEXIF():
         self.image = ImageOps.exif_transpose(img)
         self.camera = clean_camera_name(self.exif)
         self.iso = self.exif.get("ISOSpeedRatings", None)
-        
-        # 값이 없으면 None을 반환하도록 설정 (GPS 방식과 동일)
         self.f_number = get_f_number(self.exif)
         self.shutter = get_shutter(self.exif)
+        self.datetime = get_datetime(self.exif)  # 복구된 get_datetime
         self.lens = get_lens(self.exif, self.camera)
         self.focal_length = get_focal_length(self.exif)
 
@@ -188,5 +239,6 @@ class ReturnPictureEXIF():
     def get_iso(self): return self.iso
     def get_f_number(self): return self.f_number
     def get_shutter(self): return self.shutter
+    def get_datetime(self): return self.datetime
     def get_lens(self): return self.lens
     def get_focal_length(self): return self.focal_length
