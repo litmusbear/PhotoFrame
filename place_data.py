@@ -5,10 +5,11 @@ from font import *
 from PIL import Image, ImageDraw
 
 def place_model(canvas, pic, w, h, t, p, l_file, chosen_utc=None, current_path=None, 
-                override_lens="", override_f=""):
+                override_lens="", override_f="", override_focal=""):
     """
     override_lens: 사용자가 직접 입력/선택한 올드렌즈 이름
     override_f: 사용자가 직접 선택한 조리개값 (예: '2.0', '1.4' 등)
+    override_focal: 사용자가 직접 선택한 환산 화각 (예: '50mm', '35mm' 등)
     """
     font_obj = set_font(p)
     font_reg = regular(p)
@@ -26,16 +27,17 @@ def place_model(canvas, pic, w, h, t, p, l_file, chosen_utc=None, current_path=N
     text_camera = pic.get_camera()
 
     # 2. 조리개(f)값 처리 (수동 입력이 있으면 오버라이드, 없으면 EXIF 정보 사용)
-    if override_f:
-        f_val_str = f"f/{override_f}"
+    if override_f and override_f != "EXIF 유지":
+        f_val_str = f"f/{override_f.replace('f/', '')}"
     else:
         f_val = pic.get_f_number()
         f_val_str = f"f/{f_val}" if (f_val and f_val != "?") else "f/?"
 
     text_info = f"{f_val_str}  {pic.get_shutter()}  ISO{pic.get_iso()}"
 
-    # 3. 렌즈 이름 처리 (수동 입력이 있으면 오버라이드, 없으면 EXIF 정보 사용)
-    if override_lens:
+    # 3. 렌즈 및 화각(focal length) 처리
+    # (3-1) 렌즈 이름 결정
+    if override_lens and override_lens not in ["EXIF 정보 사용", "사용자 지정 입력"]:
         text_lens = override_lens
     else:
         text_lens = pic.get_lens() if hasattr(pic, "get_lens") else ""
@@ -46,6 +48,17 @@ def place_model(canvas, pic, w, h, t, p, l_file, chosen_utc=None, current_path=N
 
     if not text_lens:
         text_lens = "Lens Unspecified"
+
+    # (3-2) 화각(focal length) 결정 및 결합
+    if override_focal and override_focal not in ["EXIF 유지", "직접 입력"]:
+        focal_str = override_focal if override_focal.endswith("mm") else f"{override_focal}mm"
+    else:
+        exif_focal = pic.get_focal_length() if hasattr(pic, "get_focal_length") else None
+        focal_str = exif_focal if exif_focal else ""
+
+    # 렌즈 이름 뒤에 화각이 기재되어 있지 않은 경우에만 @화각 형태로 결합
+    if focal_str and "@" not in text_lens and focal_str not in text_lens:
+        text_lens = f"{text_lens} @{focal_str}".strip()
 
     utc_offset_str = chosen_utc if chosen_utc else "UTC+09:00"
     text_date = ""
@@ -176,7 +189,7 @@ def place_model(canvas, pic, w, h, t, p, l_file, chosen_utc=None, current_path=N
         stroke_fill=(0, 0, 0)
     )
 
-    # 렌즈 이름 그리기 (수동 선택 시 해당 이름으로 그려짐)
+    # 렌즈 정보(+화각) 그리기
     if text_lens:
         lens_y = int(start_y + size + int(size * 0.15))
         draw.text(
@@ -187,7 +200,7 @@ def place_model(canvas, pic, w, h, t, p, l_file, chosen_utc=None, current_path=N
             anchor="la"
         )
 
-    # 조리개/셔터/ISO 정보 그리기 (수동 조리개 선택 시 해당 f값으로 그려짐)
+    # 조리개/셔터/ISO 정보 그리기
     draw.text((int(info_x), int(start_y)), text_info, fill=(50, 50, 50), font=font_reg, anchor="ra")
 
     # 촬영 날짜/시간 그리기
