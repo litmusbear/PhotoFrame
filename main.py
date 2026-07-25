@@ -2,6 +2,7 @@ import uuid
 import streamlit as st
 import os
 import io
+import urllib.parse
 import traceback
 from PIL import Image
 
@@ -32,6 +33,15 @@ except ImportError:
     }
     MANUAL_F_NUMBERS = ["EXIF 유지", "f/1.2", "f/1.4", "f/1.8", "f/2.0", "f/2.8", "f/4.0", "f/5.6", "f/8.0"]
     COMMON_EQUIV_FOCAL_LENGTHS = ["EXIF 유지", "24mm", "28mm", "35mm", "40mm", "50mm", "58mm", "85mm", "135mm", "직접 입력"]
+
+def clean_uploaded_filename(filename):
+    """iOS/Safari 사진 앱 업로드 시 붙는 쿼리스트링 정제"""
+    decoded = urllib.parse.unquote(filename)
+    clean_name = decoded.split("?")[0].split("&")[0]
+    if "uuid=" in clean_name and "code=" in clean_name:
+        ext = os.path.splitext(clean_name)[1]
+        return f"RAW_Image{ext}"
+    return os.path.basename(clean_name)
 
 def extract_exif_bytes(source_path):
     if HAS_PIEXIF:
@@ -110,6 +120,7 @@ if uploaded_files:
 
     for idx, uploaded_file in enumerate(uploaded_files):
         file_id = uploaded_file.name
+        display_file_name = clean_uploaded_filename(uploaded_file.name)
         
         # 파일별 기본 세션 값 세팅
         if file_id not in st.session_state.tz_dict:
@@ -117,7 +128,6 @@ if uploaded_files:
         if file_id not in st.session_state.brand_dict:
             st.session_state.brand_dict[file_id] = brand_list[0] if brand_list else ""
         if file_id not in st.session_state.lens_dict:
-            # 초기 기본 브랜드의 최상단 렌즈 항목을 기본값으로 지정
             default_brand = st.session_state.brand_dict[file_id]
             default_lenses = OLD_LENSES_BY_BRAND.get(default_brand, ["EXIF 정보 사용"])
             st.session_state.lens_dict[file_id] = default_lenses[0] if default_lenses else "EXIF 정보 사용"
@@ -137,7 +147,7 @@ if uploaded_files:
         try:
             save_uploaded_file_to_temp(uploaded_file, temp_path)
         except Exception as e:
-            st.error(f"⚠️ '{uploaded_file.name}' 파일 변환 실패: {e}")
+            st.error(f"⚠️ '{display_file_name}' 파일 변환 실패: {e}")
             continue
 
         try:
@@ -152,10 +162,10 @@ if uploaded_files:
             padding = get_padding(height)
             logo_file = logo(picture)
 
-            st.subheader(f"🖼️ 원본 파일: {uploaded_file.name}")
+            st.subheader(f"🖼️ 원본 파일: {display_file_name}")
 
             # -------------------------------------------------------------
-            # ReturnPictureEXIF의 대체 문자열 패턴을 완벽히 분리 및 검출
+            # EXIF 정보 존재 유무 판별
             # -------------------------------------------------------------
             raw_lens_full = str(picture.get_lens() if hasattr(picture, "get_lens") else "").strip()
             exif_data_raw = picture.exif if hasattr(picture, "exif") else {}
@@ -166,159 +176,141 @@ if uploaded_files:
             eq_focal = exif_data_raw.get("FocalLengthIn35mmFilm", "")
             if not eq_focal or str(eq_focal) == "?":
                 eq_focal = exif_data_raw.get("FocalLength", "")
-            
             focal_val_str = str(eq_focal).strip()
             has_focal = bool(focal_val_str) and (focal_val_str not in ["?", "None", "0", "0.0"])
 
             raw_f_num = str(picture.get_f_number() if hasattr(picture, "get_f_number") else "").strip()
             has_f_num = bool(raw_f_num) and (raw_f_num not in ["?", "None", "0.0", "0", "f/0.0", "f/0"])
 
-            # 없는 정보가 하나라도 있을 때만 동적 UI 박스 생성
-            if not (has_lens and has_focal and has_f_num):
-                with st.expander("⚙️ 누락된 EXIF 정보 수동 입력", expanded=True):
+            # -------------------------------------------------------------
+            # 수동 입력 UI 구성 (수동 렌즈 선택 시 화각 입력칸 항시 노출)
+            # -------------------------------------------------------------
+            with st.expander("⚙️ 촬영 및 렌즈/화각 정보 수동 입력", expanded=(not (has_lens and has_focal and has_f_num))):
+                
+                # 수동 렌즈 변경 필요 여부 혹은 사용자의 자유 조절을 위해 브랜드, 렌즈, 화각, 조리개 필드 표시
+                cols = st.columns(4)
+
+                # 1. 브랜드 선택
+                with cols[0]:
+                    cur_brand = st.session_state.brand_dict[file_id]
+                    brand_idx = brand_list.index(cur_brand) if cur_brand in brand_list else 0
+
+                    def make_brand_callback(fid=file_id, uid=unique_id):
+                        def callback():
+                            new_brand = st.session_state[f"brand_select_{uid}"]
+                            st.session_state.brand_dict[fid] = new_brand
+                            lenses_for_brand = OLD_LENSES_BY_BRAND.get(new_brand, ["EXIF 정보 사용"])
+                            if lenses_for_brand:
+                                st.session_state.lens_dict[fid] = lenses_for_brand[0]
+                        return callback
+
+                    selected_brand = st.selectbox(
+                        "🏷️ 브랜드",
+                        brand_list,
+                        index=brand_idx,
+                        key=f"brand_select_{unique_id}",
+                        on_change=make_brand_callback()
+                    )
+
+                # 2. 렌즈 선택
+                with cols[1]:
+                    available_lenses = OLD_LENSES_BY_BRAND.get(selected_brand, ["EXIF 정보 사용"])
+                    cur_lens = st.session_state.lens_dict[file_id]
                     
-                    active_cols = []
-                    if not has_lens:
-                        active_cols.extend(["brand", "lens"])
-                    if not has_focal:
-                        active_cols.append("focal")
-                    if not has_f_num:
-                        active_cols.append("f_num")
+                    if cur_lens not in available_lenses:
+                        cur_lens = available_lenses[0] if available_lenses else "EXIF 정보 사용"
+                        st.session_state.lens_dict[file_id] = cur_lens
 
-                    cols = st.columns(len(active_cols))
-                    col_idx = 0
+                    lens_idx = available_lenses.index(cur_lens)
 
-                    # 1. 렌즈 선택 UI
-                    if not has_lens:
-                        with cols[col_idx]:
-                            cur_brand = st.session_state.brand_dict[file_id]
-                            brand_idx = brand_list.index(cur_brand) if cur_brand in brand_list else 0
+                    def make_lens_callback(fid=file_id, uid=unique_id):
+                        return lambda: st.session_state.lens_dict.update({fid: st.session_state[f"lens_select_{uid}"]})
 
-                            # 브랜드 변경 시 렌즈 선택창의 최상단(첫 번째) 항목으로 자동 세팅하는 콜백
-                            def make_brand_callback(fid=file_id, uid=unique_id):
-                                def callback():
-                                    new_brand = st.session_state[f"brand_select_{uid}"]
-                                    st.session_state.brand_dict[fid] = new_brand
-                                    lenses_for_brand = OLD_LENSES_BY_BRAND.get(new_brand, ["EXIF 정보 사용"])
-                                    if lenses_for_brand:
-                                        st.session_state.lens_dict[fid] = lenses_for_brand[0]
-                                return callback
+                    selected_lens = st.selectbox(
+                        "🎞️ 렌즈 선택",
+                        options=available_lenses,
+                        index=lens_idx,
+                        key=f"lens_select_{unique_id}",
+                        on_change=make_lens_callback()
+                    )
 
-                            selected_brand = st.selectbox(
-                                "🏷️ 브랜드",
-                                brand_list,
-                                index=brand_idx,
-                                key=f"brand_select_{unique_id}",
-                                on_change=make_brand_callback()
-                            )
-                        col_idx += 1
+                    if selected_lens == "사용자 지정 입력":
+                        def make_custom_lens_callback(fid=file_id, uid=unique_id):
+                            return lambda: st.session_state.custom_lens_dict.update({fid: st.session_state[f"custom_lens_{uid}"]})
 
-                        with cols[col_idx]:
-                            available_lenses = OLD_LENSES_BY_BRAND.get(selected_brand, ["EXIF 정보 사용"])
-                            cur_lens = st.session_state.lens_dict[file_id]
-                            
-                            # 만약 현재 세션 렌즈값이 현재 브랜드 렌즈 목록에 없으면 최상단 항목으로 맞춤
-                            if cur_lens not in available_lenses:
-                                cur_lens = available_lenses[0] if available_lenses else "EXIF 정보 사용"
-                                st.session_state.lens_dict[file_id] = cur_lens
+                        st.text_input(
+                            "렌즈명 직접 입력",
+                            value=st.session_state.custom_lens_dict[file_id],
+                            placeholder="예: Jupiter-8 50mm f/2.0",
+                            key=f"custom_lens_{unique_id}",
+                            on_change=make_custom_lens_callback()
+                        )
 
-                            lens_idx = available_lenses.index(cur_lens)
+                # 3. 화각 선택 (EXIF 유무 상관없이 수동 지정 및 변경 가능)
+                with cols[2]:
+                    cur_focal = st.session_state.focal_dict[file_id]
+                    focal_idx = COMMON_EQUIV_FOCAL_LENGTHS.index(cur_focal) if cur_focal in COMMON_EQUIV_FOCAL_LENGTHS else 0
 
-                            def make_lens_callback(fid=file_id, uid=unique_id):
-                                return lambda: st.session_state.lens_dict.update({fid: st.session_state[f"lens_select_{uid}"]})
+                    def make_focal_callback(fid=file_id, uid=unique_id):
+                        return lambda: st.session_state.focal_dict.update({fid: st.session_state[f"focal_select_{uid}"]})
 
-                            selected_lens = st.selectbox(
-                                "🎞️ 렌즈 선택",
-                                options=available_lenses,
-                                index=lens_idx,
-                                key=f"lens_select_{unique_id}",
-                                on_change=make_lens_callback()
-                            )
+                    selected_focal = st.selectbox(
+                        "📐 화각 선택",
+                        COMMON_EQUIV_FOCAL_LENGTHS,
+                        index=focal_idx,
+                        key=f"focal_select_{unique_id}",
+                        on_change=make_focal_callback()
+                    )
 
-                            if selected_lens == "사용자 지정 입력":
-                                def make_custom_lens_callback(fid=file_id, uid=unique_id):
-                                    return lambda: st.session_state.custom_lens_dict.update({fid: st.session_state[f"custom_lens_{uid}"]})
+                    if selected_focal == "직접 입력":
+                        def make_custom_focal_callback(fid=file_id, uid=unique_id):
+                            return lambda: st.session_state.custom_focal_dict.update({fid: st.session_state[f"custom_focal_{uid}"]})
 
-                                st.text_input(
-                                    "렌즈명 직접 입력",
-                                    value=st.session_state.custom_lens_dict[file_id],
-                                    placeholder="예: Jupiter-8 50mm f/2.0",
-                                    key=f"custom_lens_{unique_id}",
-                                    on_change=make_custom_lens_callback()
-                                )
-                        col_idx += 1
+                        st.text_input(
+                            "화각 직접 입력",
+                            value=st.session_state.custom_focal_dict[file_id],
+                            placeholder="예: 40mm",
+                            key=f"custom_focal_{unique_id}",
+                            on_change=make_custom_focal_callback()
+                        )
 
-                    # 2. 화각 선택 UI
-                    if not has_focal:
-                        with cols[col_idx]:
-                            cur_focal = st.session_state.focal_dict[file_id]
-                            focal_idx = COMMON_EQUIV_FOCAL_LENGTHS.index(cur_focal) if cur_focal in COMMON_EQUIV_FOCAL_LENGTHS else 0
+                # 4. 조리개 선택
+                with cols[3]:
+                    cur_f = st.session_state.f_dict[file_id]
+                    f_idx = MANUAL_F_NUMBERS.index(cur_f) if cur_f in MANUAL_F_NUMBERS else 0
 
-                            def make_focal_callback(fid=file_id, uid=unique_id):
-                                return lambda: st.session_state.focal_dict.update({fid: st.session_state[f"focal_select_{uid}"]})
+                    def make_f_callback(fid=file_id, uid=unique_id):
+                        return lambda: st.session_state.f_dict.update({fid: st.session_state[f"f_select_{uid}"]})
 
-                            selected_focal = st.selectbox(
-                                "📐 풀프레임 환산 화각",
-                                COMMON_EQUIV_FOCAL_LENGTHS,
-                                index=focal_idx,
-                                key=f"focal_select_{unique_id}",
-                                on_change=make_focal_callback()
-                            )
-
-                            if selected_focal == "직접 입력":
-                                def make_custom_focal_callback(fid=file_id, uid=unique_id):
-                                    return lambda: st.session_state.custom_focal_dict.update({fid: st.session_state[f"custom_focal_{uid}"]})
-
-                                st.text_input(
-                                    "화각 직접 입력",
-                                    value=st.session_state.custom_focal_dict[file_id],
-                                    placeholder="예: 40mm",
-                                    key=f"custom_focal_{unique_id}",
-                                    on_change=make_custom_focal_callback()
-                                )
-                        col_idx += 1
-
-                    # 3. 조리개 선택 UI
-                    if not has_f_num:
-                        with cols[col_idx]:
-                            cur_f = st.session_state.f_dict[file_id]
-                            f_idx = MANUAL_F_NUMBERS.index(cur_f) if cur_f in MANUAL_F_NUMBERS else 0
-
-                            def make_f_callback(fid=file_id, uid=unique_id):
-                                return lambda: st.session_state.f_dict.update({fid: st.session_state[f"f_select_{uid}"]})
-
-                            st.selectbox(
-                                "🔘 조리개(f/)",
-                                MANUAL_F_NUMBERS,
-                                index=f_idx,
-                                key=f"f_select_{unique_id}",
-                                on_change=make_f_callback()
-                            )
+                    st.selectbox(
+                        "🔘 조리개(f/)",
+                        MANUAL_F_NUMBERS,
+                        index=f_idx,
+                        key=f"f_select_{unique_id}",
+                        on_change=make_f_callback()
+                    )
 
             # -------------------------------------------------------------
-            # 세션 데이터에서 최종 전달 값 처리 (누락된 항목만 세션값 적용)
+            # 오버라이드 및 최종 전달 값 처리
             # -------------------------------------------------------------
             chosen_manual_lens = ""
-            if not has_lens:
-                selected_lens_val = st.session_state.lens_dict[file_id]
-                if selected_lens_val == "사용자 지정 입력":
-                    chosen_manual_lens = st.session_state.custom_lens_dict[file_id]
-                elif selected_lens_val != "EXIF 정보 사용":
-                    chosen_manual_lens = selected_lens_val
+            selected_lens_val = st.session_state.lens_dict[file_id]
+            if selected_lens_val == "사용자 지정 입력":
+                chosen_manual_lens = st.session_state.custom_lens_dict[file_id]
+            elif selected_lens_val != "EXIF 정보 사용":
+                chosen_manual_lens = selected_lens_val
 
             chosen_manual_focal = ""
-            if not has_focal:
-                selected_focal_val = st.session_state.focal_dict[file_id]
-                if selected_focal_val == "직접 입력":
-                    chosen_manual_focal = st.session_state.custom_focal_dict[file_id]
-                elif selected_focal_val != "EXIF 유지":
-                    chosen_manual_focal = selected_focal_val
+            selected_focal_val = st.session_state.focal_dict[file_id]
+            if selected_focal_val == "직접 입력":
+                chosen_manual_focal = st.session_state.custom_focal_dict[file_id]
+            elif selected_focal_val != "EXIF 유지":
+                chosen_manual_focal = selected_focal_val
 
             chosen_manual_f = ""
-            if not has_f_num:
-                selected_f_val = st.session_state.f_dict[file_id]
-                if selected_f_val != "EXIF 유지":
-                    chosen_manual_f = selected_f_val.replace("f/", "").strip()
+            selected_f_val = st.session_state.f_dict[file_id]
+            if selected_f_val != "EXIF 유지":
+                chosen_manual_f = selected_f_val.replace("f/", "").strip()
 
             # -------------------------------------------------------------
             # 타임존 선택 UI (GPS 정보 유무 검출)
@@ -357,7 +349,7 @@ if uploaded_files:
 
             base_canvas = add_border(image, width, height, thickness, padding)
 
-            # place_model에 최종 수동 입력/오버라이드 값 전달
+            # place_model에 수동 입력/오버라이드 값 전달
             final_canvas = place_model(
                 base_canvas, picture, width, height, thickness, padding, logo_file,
                 chosen_utc=single_chosen_utc, 
@@ -367,7 +359,7 @@ if uploaded_files:
                 override_focal=chosen_manual_focal
             )
 
-            st.image(final_canvas, caption=f"결과물: {uploaded_file.name}", use_container_width=True)
+            st.image(final_canvas, caption=f"결과물: {display_file_name}", use_container_width=True)
 
             exif_bytes = extract_exif_bytes(temp_path)
 
@@ -380,10 +372,10 @@ if uploaded_files:
             else:
                 final_canvas.save(buf, format="JPEG", quality=95)
 
-            clean_filename = os.path.splitext(uploaded_file.name)[0]
+            clean_filename = os.path.splitext(display_file_name)[0]
 
             st.download_button(
-                label=f"📥 {uploaded_file.name} 저장",
+                label=f"📥 {display_file_name} 저장",
                 data=buf.getvalue(),
                 file_name=f"result_{clean_filename}.jpg",
                 key=f"btn_{unique_id}",
@@ -391,7 +383,7 @@ if uploaded_files:
             )
 
         except Exception as e:
-            st.error(f"⚠️ '{uploaded_file.name}' 처리 중 오류 발생: {e}")
+            st.error(f"⚠️ '{display_file_name}' 처리 중 오류 발생: {e}")
             st.code(traceback.format_exc())
             continue
 
