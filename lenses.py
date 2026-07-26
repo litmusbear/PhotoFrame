@@ -103,7 +103,7 @@ KNOWN_COMPACT_LENSES = {
 COMMON_EQUIV_FOCAL_LENGTHS = [
     "EXIF 유지",
     "14mm", "18mm", "20mm", "24mm", "28mm", "35mm", "40mm", 
-    "50mm", "58mm", "85mm", "90mm", "105mm", "135mm", "200mm",
+    "50mm", "58mm", "75mm" "85mm", "90mm", "105mm", "135mm", "200mm",
     "직접 입력"
 ]
 
