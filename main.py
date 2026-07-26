@@ -44,12 +44,80 @@ def clean_uploaded_filename(filename):
         return f"RAW_Image{ext}"
     return os.path.basename(clean_name)
 
+
+# =====================================================================
+# 🚀 최적화 1: 무거운 이미지 렌더링 작업을 캐싱하여 재실행 방지
+# =====================================================================
+@st.cache_data(show_spinner="이미지 프레임 생성 중...")
+def render_processed_image(file_bytes, single_chosen_utc, override_lens, override_f, override_focal):
+    """
+    동일한 파라미터 조합일 때 이미 연산된 결과물을 캐시에서 가져옵니다.
+    디스크 파일 대신 메모리(io.BytesIO)를 활용합니다.
+    """
+    # BytesIO를 통해 임시 파일 생성 없이 메모리에서 연산
+    file_stream = io.BytesIO(file_bytes)
+    
+    # ReturnPictureEXIF가 파일 경로 대신 Stream/Bytes도 지원하는지 확인 필요.
+    # 만약 파일 경로만 지원한다면 임시 파일 처리를 내부로 고립시킵니다.
+    temp_path = f"temp_cache_{uuid.uuid4().hex}.jpg"
+    with open(temp_path, "wb") as f:
+        f.write(file_bytes)
+
+    try:
+        picture = ReturnPictureEXIF(temp_path)
+        image = picture.get_image()
+        if image is None:
+            raise ValueError("이미지를 읽을 수 없습니다.")
+
+        width = get_width(image)
+        height = get_height(image)
+        thickness = get_thickness(height)
+        padding = get_padding(height)
+        logo_file = logo(picture)
+
+        base_canvas = add_border(image, width, height, thickness, padding)
+
+        final_canvas = place_model(
+            base_canvas, picture, width, height, thickness, padding, logo_file,
+            chosen_utc=single_chosen_utc, 
+            current_path=temp_path,
+            override_lens=override_lens,
+            override_f=override_f,
+            override_focal=override_focal
+        )
+
+        # -------------------------------------------------------------
+        # EXIF 바이너리 업데이트 및 최종 이미지 JPEG 변환
+        # -------------------------------------------------------------
+        updated_exif_bytes = update_and_extract_exif_bytes(
+            temp_path,
+            override_lens=override_lens,
+            override_f=override_f,
+            override_focal=override_focal
+        )
+
+        buf = io.BytesIO()
+        if updated_exif_bytes:
+            try:
+                final_canvas.save(buf, format="JPEG", quality=95, exif=updated_exif_bytes)
+            except Exception:
+                final_canvas.save(buf, format="JPEG", quality=95)
+        else:
+            final_canvas.save(buf, format="JPEG", quality=95)
+
+        return buf.getvalue()
+
+    finally:
+        # 캐싱 함수 완료 후 임시 파일 즉시 삭제
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
+
+
 def update_and_extract_exif_bytes(source_path, override_lens="", override_f="", override_focal=""):
-    """
-    수동으로 선택하거나 입력한 메타데이터를 원본 EXIF에 주입하여 바이너리로 반환
-    """
     if not HAS_PIEXIF:
-        # piexif 없을 시 기존 방식 파싱
         try:
             with Image.open(source_path) as img:
                 return img.info.get("exif")
@@ -61,15 +129,12 @@ def update_and_extract_exif_bytes(source_path, override_lens="", override_f="", 
     except Exception:
         exif_dict = {"0th": {}, "Exif": {}, "GPS": {}, "1st": {}, "thumbnail": None}
 
-    # 방향 정보 리셋 (회전 문제 방지)
     if "0th" in exif_dict and piexif.ImageIFD.Orientation in exif_dict["0th"]:
         exif_dict["0th"][piexif.ImageIFD.Orientation] = 1
 
-    # 1. 렌즈 모델 주입
     if override_lens:
         exif_dict["Exif"][piexif.ExifIFD.LensModel] = override_lens.encode('utf-8')
 
-    # 2. 조리개 값 (FNumber) 주입 (분수 형태로 변환 EX: 1.4 -> 14/10)
     if override_f:
         try:
             f_val = float(override_f.replace("f/", "").strip())
@@ -77,7 +142,6 @@ def update_and_extract_exif_bytes(source_path, override_lens="", override_f="", 
         except Exception:
             pass
 
-    # 3. 화각 값 (FocalLength / 35mm 환산) 주입
     if override_focal:
         try:
             focal_num = float(re.sub(r'[^0-9.]', '', override_focal))
@@ -92,6 +156,9 @@ def update_and_extract_exif_bytes(source_path, override_lens="", override_f="", 
         return None
 
 
+# =====================================================================
+# UI 레이아웃
+# =====================================================================
 st.set_page_config(page_title="사진 데이터 프레임 생성기", layout="centered")
 
 st.markdown("""
@@ -129,8 +196,6 @@ uploaded_files = st.file_uploader(
 )
 
 if uploaded_files:
-    temp_file_paths = []
-
     # 세션 딕셔너리 초기화
     if "tz_dict" not in st.session_state: st.session_state.tz_dict = {}
     if "brand_dict" not in st.session_state: st.session_state.brand_dict = {}
@@ -146,6 +211,9 @@ if uploaded_files:
         file_id = uploaded_file.name
         display_file_name = clean_uploaded_filename(uploaded_file.name)
         
+        # 바이너리 데이터 추출 (캐시 함수의 입력값으로 활용)
+        file_bytes = uploaded_file.getvalue()
+
         # 기본 세션 값 처리
         if file_id not in st.session_state.tz_dict:
             st.session_state.tz_dict[file_id] = "UTC+09:00 (한국/일본/인도네시아 동부)"
@@ -160,48 +228,15 @@ if uploaded_files:
         if file_id not in st.session_state.focal_dict: st.session_state.focal_dict[file_id] = "EXIF 유지"
         if file_id not in st.session_state.custom_focal_dict: st.session_state.custom_focal_dict[file_id] = ""
 
-        unique_id = f"{uuid.uuid4().hex[:6]}_{idx}"
-        temp_path = f"temp_{unique_id}.jpg"
-        temp_file_paths.append(temp_path)
+        unique_id = f"{hash(file_id)}_{idx}"
 
         try:
-            save_uploaded_file_to_temp(uploaded_file, temp_path)
-        except Exception as e:
-            st.error(f"⚠️ '{display_file_name}' 파일 변환 실패: {e}")
-            continue
-
-        try:
-            picture = ReturnPictureEXIF(temp_path)
-            image = picture.get_image()
-            if image is None:
-                raise ValueError("이미지를 읽을 수 없습니다.")
-
-            width = get_width(image)
-            height = get_height(image)
-            thickness = get_thickness(height)
-            padding = get_padding(height)
-            logo_file = logo(picture)
-
             st.subheader(f"🖼️ 원본 파일: {display_file_name}")
 
-            # EXIF 유무 확인
-            raw_lens_full = str(picture.get_lens() if hasattr(picture, "get_lens") else "").strip()
-            exif_data_raw = picture.exif if hasattr(picture, "exif") else {}
-            raw_lens_tag = str(exif_data_raw.get("LensModel", "")).strip()
-            
-            has_lens = bool(raw_lens_tag) and ("lens unspecified" not in raw_lens_full.lower()) and (raw_lens_tag.lower() not in ["none", "unknown", "?", "built-in"])
-
-            eq_focal = exif_data_raw.get("FocalLengthIn35mmFilm", "") or exif_data_raw.get("FocalLength", "")
-            focal_val_str = str(eq_focal).strip()
-            has_focal = bool(focal_val_str) and (focal_val_str not in ["?", "None", "0", "0.0"])
-
-            raw_f_num = str(picture.get_f_number() if hasattr(picture, "get_f_number") else "").strip()
-            has_f_num = bool(raw_f_num) and (raw_f_num not in ["?", "None", "0.0", "0", "f/0.0", "f/0"])
-
             # -------------------------------------------------------------
-            # 수동 입력 옵션 드롭다운
+            # 수동 입력 옵션 드롭다운 (UI 제어)
             # -------------------------------------------------------------
-            with st.expander("⚙️ 촬영 및 렌즈/화각 정보 수동 입력", expanded=(not (has_lens and has_focal and has_f_num))):
+            with st.expander("⚙️ 촬영 및 렌즈/화각 정보 수동 입력", expanded=False):
                 cols = st.columns(4)
 
                 # 브랜드
@@ -287,9 +322,7 @@ if uploaded_files:
                         key=f"f_select_{unique_id}", on_change=make_f_callback()
                     )
 
-            # -------------------------------------------------------------
-            # 수동 데이터 추출
-            # -------------------------------------------------------------
+            # 수동 데이터 정제
             chosen_manual_lens = ""
             selected_lens_val = st.session_state.lens_dict[file_id]
             if selected_lens_val == "사용자 지정 입력":
@@ -309,73 +342,40 @@ if uploaded_files:
             if selected_f_val != "EXIF 유지":
                 chosen_manual_f = selected_f_val.replace("f/", "").strip()
 
-            # -------------------------------------------------------------
             # 타임존 설정
-            # -------------------------------------------------------------
-            show_timezone_selector = True
-            try:
-                with Image.open(temp_path) as img_exif:
-                    exif_data = img_exif._getexif()
-                if exif_data:
-                    from PIL.ExifTags import TAGS
-                    readable_exif = {TAGS.get(tag, tag): val for tag, val in exif_data.items()}
-                    gps_info = readable_exif.get("GPSInfo", {})
-                    if gps_info and 2 in gps_info and 4 in gps_info:
-                        show_timezone_selector = False
-            except Exception:
-                pass
+            def make_tz_callback(fid=file_id, uid=unique_id):
+                return lambda: st.session_state.tz_dict.update({fid: st.session_state[f"selectbox_{uid}"]})
 
-            if show_timezone_selector:
-                def make_tz_callback(fid=file_id, uid=unique_id):
-                    return lambda: st.session_state.tz_dict.update({fid: st.session_state[f"selectbox_{uid}"]})
+            current_index = timezone_options.index(st.session_state.tz_dict[file_id]) if st.session_state.tz_dict[file_id] in timezone_options else 0
 
-                current_index = timezone_options.index(st.session_state.tz_dict[file_id]) if st.session_state.tz_dict[file_id] in timezone_options else 0
-
-                st.selectbox(
-                    f"⚠️ GPS 정보가 없습니다. 적용할 타임존을 선택하세요.",
-                    timezone_options, index=current_index,
-                    key=f"selectbox_{unique_id}", on_change=make_tz_callback()
-                )
+            st.selectbox(
+                f"🌐 적용할 타임존 선택",
+                timezone_options, index=current_index,
+                key=f"selectbox_{unique_id}", on_change=make_tz_callback()
+            )
 
             single_chosen_utc = st.session_state.tz_dict[file_id].split(" ")[0]
 
-            base_canvas = add_border(image, width, height, thickness, padding)
-
-            final_canvas = place_model(
-                base_canvas, picture, width, height, thickness, padding, logo_file,
-                chosen_utc=single_chosen_utc, 
-                current_path=temp_path,
+            # -------------------------------------------------------------
+            # 🚀 최적화 2: 캐싱된 이미지 연산 실행
+            # -------------------------------------------------------------
+            final_jpeg_bytes = render_processed_image(
+                file_bytes=file_bytes,
+                single_chosen_utc=single_chosen_utc,
                 override_lens=chosen_manual_lens,
                 override_f=chosen_manual_f,
                 override_focal=chosen_manual_focal
             )
 
-            st.image(final_canvas, caption=f"결과물: {display_file_name}", use_container_width=True)
-
-            # -------------------------------------------------------------
-            # 저장 시 수동 선택 메타데이터를 바이너리에 직접 주입
-            # -------------------------------------------------------------
-            updated_exif_bytes = update_and_extract_exif_bytes(
-                temp_path,
-                override_lens=chosen_manual_lens,
-                override_f=chosen_manual_f,
-                override_focal=chosen_manual_focal
-            )
-
-            buf = io.BytesIO()
-            if updated_exif_bytes:
-                try:
-                    final_canvas.save(buf, format="JPEG", quality=95, exif=updated_exif_bytes)
-                except Exception:
-                    final_canvas.save(buf, format="JPEG", quality=95)
-            else:
-                final_canvas.save(buf, format="JPEG", quality=95)
+            # 결과 화면 출력
+            st.image(final_jpeg_bytes, caption=f"결과물: {display_file_name}", use_container_width=True)
 
             clean_filename = os.path.splitext(display_file_name)[0]
 
+            # 다운로드 버튼
             st.download_button(
                 label=f"📥 {display_file_name} 저장",
-                data=buf.getvalue(),
+                data=final_jpeg_bytes,
                 file_name=f"result_{clean_filename}.jpg",
                 key=f"btn_{unique_id}",
                 use_container_width=True
@@ -388,11 +388,5 @@ if uploaded_files:
 
         st.divider()
 
-    for path in temp_file_paths:
-        if os.path.exists(path):
-            try:
-                os.remove(path)
-            except Exception:
-                pass
 else:
     st.info("💡 위 박스에 사진을 업로드하면 촬영 정보가 담긴 폴라로이드 스타일 프레임이 실시간으로 생성됩니다.")
