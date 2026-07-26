@@ -33,7 +33,7 @@ except ImportError:
         "Nikon F": ["Nikkor-S Auto 50mm f/1.4"]
     }
     MANUAL_F_NUMBERS = ["EXIF 유지", "f/1.2", "f/1.4", "f/1.8", "f/2.0", "f/2.8", "f/4.0", "f/5.6", "f/8.0"]
-    COMMON_EQUIV_FOCAL_LENGTHS = ["EXIF 유지", "24mm", "28mm", "35mm", "40mm", "50mm", "58mm", "85mm", "135mm", "직접 입력"]
+    COMMON_EQUIV_FOCAL_LENGTHS = ["EXIF 유지", "24mm", "28mm", "35mm", "40mm", "50mm", "58mm", "75mm", "85mm", "135mm", "직접 입력"]
 
 def clean_uploaded_filename(filename):
     """iOS/Safari 사진 앱 업로드 시 붙는 쿼리스트링 정제"""
